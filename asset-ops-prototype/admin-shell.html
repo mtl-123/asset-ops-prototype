@@ -1,0 +1,28 @@
+<div id="asset-app" class="vab-shell" aria-label="栖云资产应用与运维平台">
+  <button id="vab-mobile-backdrop" class="vab-mobile-backdrop" aria-label="收起导航" hidden></button>
+  <aside class="sidebar" aria-label="工作空间导航">
+    <button class="brand" data-action="go" data-page="overview" aria-label="栖云管理平台首页"><span class="vab-icon vab-icon-cloud vab-brand-icon" aria-hidden="true"></span><strong>栖云管理平台</strong></button>
+    <nav aria-label="主导航" id="app-nav"></nav>
+    <div class="vab-side-status"><span></span><div>Go 服务环境<small>资产 · SSH · 运维</small></div></div>
+  </aside>
+  <div class="app-main">
+    <div class="vab-fixed-header">
+      <header class="topbar">
+        <div class="vab-top-left"><button id="vab-collapse" class="vab-circle-button" data-action="vab-collapse" aria-label="折叠导航" aria-expanded="true"><span class="vab-icon vab-icon-outdent" aria-hidden="true"></span></button><nav class="breadcrumb" aria-label="当前位置"><span id="breadcrumb-section"></span><strong id="breadcrumb-current">首页</strong></nav></div>
+        <div class="top-actions">
+          <label class="global-search"><span class="vab-icon vab-icon-search" aria-hidden="true"></span><input id="global-search" aria-label="搜索资产、IP 或人员" placeholder="搜索资产、IP 或人员"></label>
+          <button class="vab-circle-button vab-fullscreen" data-action="vab-fullscreen" aria-label="进入全屏"><span class="vab-icon vab-icon-expand" aria-hidden="true"></span></button>
+          <button class="vab-circle-button" data-action="vab-theme" aria-label="主题配置"><span class="vab-icon vab-icon-crown" aria-hidden="true"></span></button>
+          <button class="vab-circle-button" data-action="vab-refresh" aria-label="刷新当前页面"><span class="vab-icon vab-icon-sync-alt" aria-hidden="true"></span></button>
+          <button class="vab-avatar-button" data-action="vab-profile" aria-label="用户菜单"><span class="vab-avatar" role="img" aria-label="用户头像"></span></button>
+        </div>
+      </header>
+      <div class="vab-tagsbar"><div id="vab-page-tabs" class="vab-page-tabs" role="group" aria-label="已打开的页面"></div><button class="vab-more" data-action="vab-more" aria-expanded="false">更多操作 <span class="vab-icon vab-icon-chevron-down" aria-hidden="true"></span></button><div id="vab-tab-menu" class="vab-tab-menu" hidden><button data-action="vab-close-others">关闭其他</button><button data-action="vab-close-left">关闭左侧</button><button data-action="vab-close-right">关闭右侧</button><button data-action="vab-close-all">关闭全部</button></div></div>
+    </div>
+    <div class="vab-announcement"><span>运行环境</span><p>资产与 SSH 已接入真实数据链路 · 外部系统按配置启用</p><button data-action="go" data-page="integrations">接入中心</button></div>
+    <main class="main-content"><div class="page-heading"><div><div class="eyebrow" id="page-eyebrow"></div><h1 id="page-title">首页</h1><p id="page-description">资产、应用与基础设施统一管理。</p></div><div class="heading-date"><span class="status-dot"></span>服务运行中 <strong>GO · SQLITE</strong></div></div><div id="page-content"></div><footer class="app-footer"><span>栖云管理平台 © 2026</span><span>真实资产与 SSH 已启用 · 外部集成按配置生效</span></footer></main>
+  </div>
+  <div id="modal-layer" hidden></div>
+  <div id="vab-drawer-layer" hidden></div>
+  <div id="app-toast" role="status" aria-live="polite" hidden></div>
+</div>

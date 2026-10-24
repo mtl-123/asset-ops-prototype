@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": { "title": "资产应用与真实设备接入架构", "quality_profile": "showcase", "viewBox": [1510, 790] },
+  "components": [
+    { "id": "workspace", "type": "frontend", "label": "统一管理入口", "sublabel": "资产 / 应用 / 告警 / 工单", "pos": [40, 310], "size": [210, 82] },
+    { "id": "control", "type": "backend", "label": "业务与权限服务", "sublabel": "CMDB / 单据 / 授权校验", "pos": [430, 310], "size": [210, 82] },
+    { "id": "runner", "type": "messagebus", "label": "异步任务与连接器", "sublabel": "预检 / 幂等 / 回读 / 补偿", "pos": [820, 310], "size": [210, 82] },
+    { "id": "relay", "type": "backend", "label": "站点采集与执行网关", "sublabel": "按网区部署 / 本地缓冲", "pos": [1210, 310], "size": [230, 82] },
+    { "id": "identity", "type": "security", "label": "身份与审计", "sublabel": "SSO / MFA / 资源范围", "pos": [430, 60], "size": [210, 82] },
+    { "id": "credentials", "type": "security", "label": "服务端凭据库", "sublabel": "短期授权 / 到期轮换", "pos": [820, 60], "size": [210, 82] },
+    { "id": "ledger", "type": "database", "label": "业务账本与附件", "sublabel": "资产关系 / 原始单据 / 留痕", "pos": [430, 600], "size": [210, 82] },
+    { "id": "observability", "type": "database", "label": "观测数据与告警", "sublabel": "指标 / 日志 / 追踪 / 事件", "pos": [820, 600], "size": [210, 82] },
+    { "id": "managed", "type": "external", "label": "被管理环境", "sublabel": "主机 / PVE / 网络 / Web", "pos": [1210, 600], "size": [230, 82] }
+  ],
+  "connections": [
+    { "id": "ui-api", "from": "workspace", "to": "control", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "identity-api", "from": "identity", "to": "control", "label": "身份与权限", "variant": "security", "labelDy": 70 },
+    { "id": "api-job", "from": "control", "to": "runner", "label": "授权任务", "variant": "emphasis" },
+    { "id": "secret-job", "from": "credentials", "to": "runner", "label": "按需凭据", "variant": "security", "labelDy": 70 },
+    { "id": "job-site", "from": "runner", "to": "relay", "label": "mTLS 通道", "variant": "emphasis" },
+    { "id": "api-ledger", "from": "control", "to": "ledger", "label": "事务与流水", "labelDy": 90 },
+    { "id": "site-managed", "from": "relay", "to": "managed", "label": "Agent / API / SNMP", "labelDy": 90 },
+    { "id": "site-data", "from": "relay", "to": "observability", "label": "观测回传", "fromSide": "left", "toSide": "right" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "数据可信", "items": ["按来源匹配稳定资源 ID", "采集时间与未知状态保留"] },
+    { "dot": "cyan", "title": "执行可追溯", "items": ["请求、外部任务与回读关联", "超时先核实，避免重复执行"] },
+    { "dot": "amber", "title": "跨网区接入", "items": ["站点网关主动建立受控通道", "远程会话使用专用审计网关"] }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "达达福利物资管理 · 审批与审计逻辑思维导图",
+    "quality_profile": "showcase",
+    "viewBox": [1800, 1420],
+    "legend": {"mode": "hidden"}
+  },
+  "components": [
+    {"id":"audit-root","type":"backend","label":"福利物资管理","sublabel":"人 → 单 → 审批 → 批次 → 流水 → 报表\n全链路留痕与反向追溯","pos":[740,625],"size":[320,150]},
+    {"id":"role-duty","type":"security","label":"01 · 角色与权限","sublabel":"员工：申请领用；上级：第一层审批\n采购：企微采购申请、到货入库\n行政：第二层批复、出库、盘点\n财务：只读查看、按月查询与导出\nIT：权限配置与系统运维\n【建议】操作权限与数据范围分别控制\n【待定】代领、兼岗、自审回避、上级来源","pos":[40,40],"size":[570,230]},
+    {"id":"purchase-receipt","type":"external","label":"02 · 采购审批 → 到货入库","sublabel":"采购发起 → 企微审批 → 同步采购记录 → 入库\n入库字段：物品、数量、保质期／到期日\n【建议】审批通过后才可正式入库\n【建议】企微单号去重；入库单关联采购单\n【建议】确认入库 → 批次库存增加 → 入库流水\n【待定】部分到货、超量、无单入库、同步失败","pos":[40,320],"size":[570,220]},
+    {"id":"requisition-approval","type":"frontend","label":"03 · 员工申请 → 双层审批","sublabel":"员工提交 → 上级审批 → 行政批复 → 待出库\n申请人、实际领用人、所属部门分别记录\n费用归属部门、用途标签、物品数量、日期\n【建议】拒绝留原因；批准暂不扣减实物库存\n【建议】关键字段变更须重新审批\n【待定】退回修改、撤销、代领、库存占用时点","pos":[40,600],"size":[570,220]},
+    {"id":"issue-control","type":"backend","label":"04 · 批复通过 → 出库确认","sublabel":"行政确认：物品、批次、实际数量、领用日期\n【建议】出库前校验审批、权限和可用库存\n【建议】不足则阻断；先到期优先；过期禁发\n【建议】确认出库 → 批次扣减 → 出库流水\n【建议】重复确认不重复扣减；保留操作人／时间\n【待定】分批、少领、多领、退库与差错更正","pos":[40,880],"size":[570,220]},
+    {"id":"module-scope","type":"cloud","label":"05 · 模块与系统边界","sublabel":"首页：概览、待办、领用申请记录\n采购管理：企微申请、同步、入库\n出库管理：审批、出库确认；库存：台账／预警／盘点\n财务报表：明细、导出；系统：分类、权限、日志\n【图示约束】独立开发，本期不对接资产系统\n【图示约束】采购企微审批，领用系统内审批","pos":[40,1160],"size":[570,220]},
+    {"id":"inventory-audit","type":"database","label":"06 · 库存效期与盘点","sublabel":"台账 → 效期预警 → 盘点 → 差异处理\n【建议】按物品＋批次＋单位核算数量与效期\n【建议】期末＝期初＋入库－出库±核准调整\n【建议】盘点留账面数、实盘数、差异、原因\n【建议】差异处理生成调整流水，不覆盖历史\n【待定】阈值／通知、盘点复核、报损、单位换算","pos":[1190,40],"size":[570,230]},
+    {"id":"cost-attribution","type":"frontend","label":"07 · 领用人与费用归属","sublabel":"申请领用人 → 实际领用人 → 所属部门\n费用归属：实际领用人所属部门／总经办\n用途标签：外部客户招待费、内部员工活动福利费\n其他用途：手动备注；【建议】选择其他时必填\n【建议】保存当时人员／部门快照，避免历史漂移\n【待定】是否可归属其他部门、多人／多部门拆分","pos":[1190,320],"size":[570,220]},
+    {"id":"finance-reconcile","type":"database","label":"08 · 财务月报与核对","sublabel":"财务只读 → 选择月份／条件 → 查看 → 导出\n原文列项：申请人、实际领用人／部门、费用归属\n用途标签、其他备注、领用日期\n【建议】补充物品、数量、批次、申请／出库单号\n【建议】已出库计入已发生领用，未出库单列\n【待定】月份按领用日还是出库日；单价／金额","pos":[1190,600],"size":[570,220]},
+    {"id":"evidence-chain","type":"security","label":"09 · 审计证据与反向追溯","sublabel":"【建议】报表行 → 出库明细 → 领用单 → 两级审批\n【建议】出库批次 → 入库明细 → 企微采购审批单\n【建议】每次库存变化 → 原始单据＋操作日志\n【建议】记录谁、何时、做什么、结果、变更前后\n【图示约束】权限隔离、日志不可删除\n【建议】更正／冲销关联原单；审批／权限／导出留痕","pos":[1190,880],"size":[570,220]},
+    {"id":"audit-exceptions","type":"messagebus","label":"10 · 异常拦截与待定规则","sublabel":"【建议】审批未通过 → 不得出库；库存不足 → 阻断\n【建议】重复同步／确认 → 去重；过期批次 → 禁发\n【建议】盘点差异 → 查因 → 核准 → 调整流水\n【建议】报表差异 → 按单号／批次逐笔反查\n【待定】接口条件、拆分规则、日期口径、金额核算\n标记说明：无前缀＝已有需求；建议／待定≠已确认","pos":[1190,1160],"size":[570,220]}
+  ],
+  "connections": [
+    {"id":"root-role","from":"audit-root","to":"role-duty"},
+    {"id":"root-purchase","from":"audit-root","to":"purchase-receipt"},
+    {"id":"root-apply","from":"audit-root","to":"requisition-approval"},
+    {"id":"root-issue","from":"audit-root","to":"issue-control"},
+    {"id":"root-module","from":"audit-root","to":"module-scope"},
+    {"id":"root-inventory","from":"audit-root","to":"inventory-audit"},
+    {"id":"root-cost","from":"audit-root","to":"cost-attribution"},
+    {"id":"root-finance","from":"audit-root","to":"finance-reconcile"},
+    {"id":"root-evidence","from":"audit-root","to":"evidence-chain"},
+    {"id":"root-exception","from":"audit-root","to":"audit-exceptions"}
+  ]
+}

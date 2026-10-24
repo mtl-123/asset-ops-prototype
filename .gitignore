@@ -1,0 +1,29 @@
+# Runtime secrets and state — never commit these.
+# data/ holds the AES master key and the SQLite database with encrypted credentials.
+asset-ops-prototype/data/
+*.db
+*.db-wal
+*.db-shm
+master.key
+
+# Built binaries (rebuild with `go build ./cmd/qiyun`).
+*.exe
+qiyun
+dbinspect
+
+# QA evidence captured against the real environment: contains internal IPs,
+# usernames, host-key fingerprints and session screenshots.
+asset-ops-prototype/qa-evidence/
+
+# Temporary render/check directories.
+diagram-check-*/
+
+# Editor and OS noise.
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs.
+*.log

@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-15",
+  "diagram_type": "architecture",
+  "specification": {
+    "file": "integration-architecture.json",
+    "sha256": "52d3ca344c0a064697d24c9f43422d80b53297a52cc4b8e7314eecb78b7b2473",
+    "bytes": 3055
+  },
+  "artifact": {
+    "file": "integration-architecture.html",
+    "sha256": "24663947ad7cdc747a407a4b228293f8530d76aafe9a81980d010999adb753e2",
+    "bytes": 652517
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "errors": 0,
+    "warnings": 0
+  },
+  "containment": "pass: 1440x900, 1600x1000, 1920x1080, 2048x1320",
+  "visualReview": {
+    "status": "reviewed",
+    "capturesReviewed": [
+      "1440x900.light",
+      "2048x1320.light",
+      "2048x1320.dark"
+    ],
+    "notes": "No clipped components or crossed relationships observed. The overview is dense at 1440 pixels; the delivered viewer supports zoom."
+  }
+}

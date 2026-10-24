@@ -1,0 +1,12 @@
+#asset-app .platform-hero{display:flex;align-items:center;justify-content:space-between;gap:22px;padding:25px 27px;margin-bottom:20px;border:1px solid var(--line);border-radius:10px;background:linear-gradient(115deg,var(--surface),var(--soft));position:relative}
+#asset-app .platform-hero h2{font-size:21px;line-height:1.5;font-weight:600;letter-spacing:-.5px;margin:7px 0}
+#asset-app .platform-hero p{font-size:12px;color:var(--sub)}
+#asset-app .platform-tabs{margin:0;flex-wrap:wrap}
+#asset-app .platform-map{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+#asset-app .platform-node{padding:17px 15px;border-radius:7px;background:var(--canvas);border-top:2px solid var(--accent-color);min-width:0}
+#asset-app .platform-node small{display:block;font-size:11px;color:var(--sub);margin-bottom:7px}
+#asset-app .platform-node strong{display:block;font-size:13px;font-weight:500;margin-bottom:8px;overflow-wrap:anywhere}
+#asset-app .platform-node span{display:block;font-size:11px;color:var(--sub);overflow-wrap:anywhere}
+#asset-app .main-content .field input{font-size:13px}
+#asset-app .metric-value{overflow-wrap:anywhere}
+@media(max-width:640px){#asset-app .platform-hero{align-items:start;flex-direction:column;padding:20px}#asset-app .platform-hero h2{font-size:19px}#asset-app .platform-map{grid-template-columns:minmax(0,1fr)}}
