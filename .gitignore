@@ -6,10 +6,11 @@ asset-ops-prototype/data/
 *.db-shm
 master.key
 
-# Built binaries (rebuild with `go build ./cmd/qiyun`).
+# Built binaries (rebuild with `go build ./cmd/qiyun`). Keep these patterns
+# anchored: a bare "qiyun" would also match the cmd/qiyun source directory.
 *.exe
-qiyun
-dbinspect
+/asset-ops-prototype/qiyun
+/asset-ops-prototype/dbinspect
 
 # QA evidence captured against the real environment: contains internal IPs,
 # usernames, host-key fingerprints and session screenshots.
