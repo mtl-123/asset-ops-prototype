@@ -148,12 +148,19 @@ var AssetDemo = window.AssetDemo = (() => {
   }
   function closeModal(){root.querySelector('#modal-layer').hidden=true;root.querySelector('#modal-layer').innerHTML='';root.querySelector('.app-main').inert=false;root.querySelector('.sidebar').inert=false;if(lastFocus?.isConnected)lastFocus.focus({preventScroll:true});window.AdminShell?.apply();}
   let toastTimer;
-  function toast(msg){const el=root.querySelector('#app-toast');el.textContent=msg;el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.hidden=true,4500);}
+  function toast(msg){
+    const el=root.querySelector('#app-toast');
+    // 只移动提示节点，不渲染页面；全屏元素之外的提示不可见。
+    const host=document.fullscreenElement;
+    (host && root.contains(host) ? host : root).appendChild(el);
+    el.textContent=msg;el.hidden=false;clearTimeout(toastTimer);
+    toastTimer=setTimeout(()=>{el.hidden=true;root.appendChild(el);},4500);
+  }
   function download(filename,content,mime='text/plain;charset=utf-8'){
     const url=URL.createObjectURL(new Blob([content],{type:mime}));const a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);toast('已生成文件：'+filename);
   }
   function saveState(){if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{page:state.page,selectedAsset:state.detailId||null,prototype:'栖云资产与应用运维 v0.4'},privateContent:{filter:state.filter}}).catch(()=>{});}
-  function render(){const m=meta[state.page]||meta.overview;root.querySelector('#page-title').textContent=m[0];root.querySelector('#breadcrumb-current').textContent=m[0];root.querySelector('#page-eyebrow').textContent=m[1];root.querySelector('#page-description').textContent=m[2];root.querySelector('.heading-date strong').textContent=state.page==='terminal'?'GO · SQLITE':['applications','alerts','integrations','automation'].includes(state.page)?'2026.10.15':state.page==='monitoring'?'2026.10.23':'2026.10.08';root.querySelectorAll('[data-nav]').forEach(b=>{b.classList.toggle('active',b.dataset.nav===state.page);b.setAttribute('aria-current',b.dataset.nav===state.page?'page':'false');});root.querySelector('#page-content').innerHTML=pages[state.page]?pages[state.page]():'';window.AdminShell?.sync();refreshIcons();}
+  function render(){const toastEl=root.querySelector('#app-toast');if(toastEl)root.appendChild(toastEl);const m=meta[state.page]||meta.overview;root.querySelector('#page-title').textContent=m[0];root.querySelector('#breadcrumb-current').textContent=m[0];root.querySelector('#page-eyebrow').textContent=m[1];root.querySelector('#page-description').textContent=m[2];root.querySelector('.heading-date strong').textContent=state.page==='terminal'?'GO · SQLITE':['applications','alerts','integrations','automation'].includes(state.page)?'2026.10.15':state.page==='monitoring'?'2026.10.23':'2026.10.08';root.querySelectorAll('[data-nav]').forEach(b=>{b.classList.toggle('active',b.dataset.nav===state.page);b.setAttribute('aria-current',b.dataset.nav===state.page?'page':'false');});const content=root.querySelector('#page-content');if(state.page==='terminal'&&window.AssetDemo.terminalWorkspace?.renderPage)window.AssetDemo.terminalWorkspace.renderPage(content);else content.innerHTML=pages[state.page]?pages[state.page]():'';window.AdminShell?.sync();refreshIcons();}
   function navigate(page){if(!pages[page])return;closeModal();window.AdminShell?.beforeNavigate(page);state.page=page;render();saveState();}
   function assetRows(list,compact=false){return list.map(raw=>{const a=safeAsset(raw);const price=a.source==='local'?(a.priceCents?money(a.priceCents):'待补充'):money(a.priceCents);return [
     `<div class="asset-name"><span class="asset-symbol">${icon(a.icon)}</span><div><button class="op-btn op-btn-link" data-action="asset-detail" data-id="${a.id}">${a.name}</button><small class="mono">${a.id}${a.source==='local'?' · 未持久化':''}</small></div></div>`,

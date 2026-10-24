@@ -47,7 +47,7 @@
   const gateway = {
     connect(options) {
       let ws = null, closed = false, queued = [], currentStatus = 'connecting';
-      const setStatus = value => { currentStatus = value; options.onStatus?.(value); };
+      const setStatus = (value, detail) => { currentStatus = value; options.onStatus?.(value, detail); };
       setStatus('connecting');
       (async () => {
         try {
@@ -60,7 +60,7 @@
               let message; try { message = JSON.parse(event.data); } catch { options.onData?.(event.data); return; }
               if (message.type === 'ready') { setStatus('connected'); return; }
               if (message.type === 'status') { setStatus(message.state); return; }
-              if (message.type === 'error') { options.onData?.(`\r\n[${message.code || 'SSH_ERROR'}] ${message.message || '远程连接失败'}\r\n`); queued = []; closed = true; setStatus('error'); return; }
+              if (message.type === 'error') { options.onData?.(`\r\n[${message.code || 'SSH_ERROR'}] ${message.message || '远程连接失败'}\r\n`); queued = []; closed = true; setStatus('error', { code: message.code, message: message.message }); return; }
               if (message.type === 'exit') { options.onData?.(`\r\n远程会话已结束，退出码 ${message.exit_code ?? '未知'}。\r\n`); setStatus('offline'); return; }
               return;
             }
