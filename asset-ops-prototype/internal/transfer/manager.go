@@ -436,6 +436,12 @@ func (m *Manager) ensureUploadFile(ctx context.Context, s *session, t *Task) err
 		s.remote = remote
 	}
 	if t.Offset == 0 {
+		// Check the destination before sending anything. Passing a directory as the
+		// remote path used to cost the whole upload: every byte transferred fine and
+		// only the final rename failed with a bare "sftp: Failure".
+		if err := guardUploadTarget(s.remote, t); err != nil {
+			return err
+		}
 		f, err := s.remote.Create(t.TempPath)
 		if err != nil {
 			return fmt.Errorf("创建远端临时文件失败：%w", err)
@@ -567,6 +573,38 @@ func (m *Manager) finishUpload(ctx context.Context, task Task) (Task, error) {
 	return updated, nil
 }
 
+// guardUploadTarget rejects destinations that cannot work, using one round trip.
+// The common operator mistake is entering a directory ("/root") instead of a file
+// ("/root/Windows10.iso"); rename onto a directory reports only SSH_FX_FAILURE,
+// which says nothing useful after a multi-hour upload.
+func guardUploadTarget(remote Remote, t *Task) error {
+	suggestion := path.Join(t.RemotePath, t.FileName)
+	if t.FileName == "" {
+		suggestion = t.RemotePath + "/<文件名>"
+	}
+	info, err := remote.Stat(t.RemotePath)
+	switch {
+	case err == nil && info.IsDir():
+		return fmt.Errorf("%w: 远端路径 %s 是一个目录，请填写完整文件路径（例如 %s）", ErrInvalid, t.RemotePath, suggestion)
+	case err == nil:
+		// Existing file: handled by the overwrite/conflict rules at publish time.
+	case !errors.Is(err, os.ErrNotExist):
+		return fmt.Errorf("无法确认远端目标 %s：%w", t.RemotePath, err)
+	}
+	dir := path.Dir(t.RemotePath)
+	if dir == "." || dir == "/" {
+		return nil
+	}
+	parent, err := remote.Stat(dir)
+	if err != nil {
+		return fmt.Errorf("%w: 远端目录 %s 不存在或不可访问", ErrInvalid, dir)
+	}
+	if !parent.IsDir() {
+		return fmt.Errorf("%w: 远端路径 %s 的上级 %s 不是目录", ErrInvalid, t.RemotePath, dir)
+	}
+	return nil
+}
+
 // publish moves the verified staging file onto its final name. Overwriting needs
 // posix-rename@openssh.com: plain SFTP v3 rename refuses to replace an existing
 // file, which is why "允许覆盖" used to fail at the very last step — after every
@@ -574,6 +612,11 @@ func (m *Manager) finishUpload(ctx context.Context, task Task) (Task, error) {
 // the old file is removed first, so the guarantee degrades from atomic to
 // best-effort instead of the upload silently never landing.
 func (m *Manager) publish(s *session, task Task) error {
+	// Re-check the destination: a task created before this guard existed, or one
+	// resumed later, may still point at a directory.
+	if err := guardUploadTarget(s.remote, &task); err != nil {
+		return err
+	}
 	if !task.Overwrite {
 		// Plain SFTP rename refusing to replace is exactly the guarantee wanted
 		// here; the Stat only turns a bare "Failure" into a readable reason.

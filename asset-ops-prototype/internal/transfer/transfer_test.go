@@ -37,9 +37,14 @@ type memFileInfo struct {
 	isDir bool
 }
 
-func (i memFileInfo) Name() string       { return i.name }
-func (i memFileInfo) Size() int64        { return i.size }
-func (i memFileInfo) Mode() os.FileMode  { if i.isDir { return os.ModeDir | 0o755 }; return 0o644 }
+func (i memFileInfo) Name() string { return i.name }
+func (i memFileInfo) Size() int64  { return i.size }
+func (i memFileInfo) Mode() os.FileMode {
+	if i.isDir {
+		return os.ModeDir | 0o755
+	}
+	return 0o644
+}
 func (i memFileInfo) ModTime() time.Time { return time.Unix(0, 0) }
 func (i memFileInfo) IsDir() bool        { return i.isDir }
 func (i memFileInfo) Sys() any           { return nil }
@@ -232,7 +237,7 @@ func (c *countingAudit) count(action string) int {
 func newTestManager(t *testing.T, fs *memFS, dir string) (*Manager, *countingAudit) {
 	t.Helper()
 	assets := fakeAssets{items: map[string]store.Asset{
-		"asset-1": {ID: "asset-1", Name: "生产主机", HostKey: "ssh-ed25519 AAAA", HostKeyStatus: "verified"},
+		"asset-1":      {ID: "asset-1", Name: "生产主机", HostKey: "ssh-ed25519 AAAA", HostKeyStatus: "verified"},
 		"asset-locked": {ID: "asset-locked", Name: "未核验主机"},
 	}}
 	audit := &countingAudit{}
@@ -279,6 +284,42 @@ func TestValidateRemotePath(t *testing.T) {
 }
 
 // --- upload ---
+
+// The classic operator mistake is entering a directory instead of a full file
+// path. Before the guard this transferred the entire file and only failed at the
+// final rename with a bare "sftp: Failure".
+func TestUploadRejectsDirectoryTargetBeforeSending(t *testing.T) {
+	fs := newMemFS()
+	fs.dirs["/root"] = true
+	m, _ := newTestManager(t, fs, t.TempDir())
+	payload := []byte("staging must never be created")
+	task := mustCreateUpload(t, m, "/root", int64(len(payload)), true)
+	task.FileName = "Windows10.iso"
+	_, err := m.WriteChunk(context.Background(), task.ID, 0, bytes.NewReader(payload), int64(len(payload)))
+	if err == nil {
+		t.Fatal("upload into a directory must fail immediately")
+	}
+	if !strings.Contains(err.Error(), "目录") {
+		t.Fatalf("error should explain that the path is a directory, got %v", err)
+	}
+	if _, ok := fs.files[task.TempPath]; ok {
+		t.Fatalf("staging file must not be created for an impossible target: %s", task.TempPath)
+	}
+	if _, ok := fs.files["/root"]; ok {
+		t.Fatal("the directory must never be replaced by a file")
+	}
+}
+
+func TestUploadRejectsMissingParentDirectory(t *testing.T) {
+	fs := newMemFS()
+	m, _ := newTestManager(t, fs, t.TempDir())
+	_, err := m.Create(context.Background(), CreateRequest{
+		AssetID: "asset-1", Direction: DirectionUpload, RemotePath: "/nope/deep/file.iso", Size: 4, Overwrite: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "目录") {
+		t.Fatalf("expected a missing-directory error at create time, got %v", err)
+	}
+}
 
 func TestUploadPublishesOnlyAfterFullSize(t *testing.T) {
 	fs := newMemFS()
