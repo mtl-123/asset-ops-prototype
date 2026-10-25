@@ -120,8 +120,11 @@ var AssetDemo = window.AssetDemo = (() => {
   }
   function syncAssets() {
     const api = window.QiyunAPI;
+    const status = api?.assetStatus?.() || { loaded: true };
     const remote = (api?.getAssets?.() || []).map(ledgerRow);
     const local = assets.filter(a => a.source === 'local');
+    // 清单还没读到（或读失败）时不要用空数组覆盖已有台账，否则界面会误报“资产消失”。
+    if (!status.loaded && remote.length === 0 && assets.some(a => a.source === 'api')) return;
     // Mutate in place: other modules hold a reference to this array.
     assets.length = 0;
     assets.push(...local, ...remote);
@@ -179,13 +182,16 @@ var AssetDemo = window.AssetDemo = (() => {
     return `<div class="grid-4">${metric('资产总量',`${assets.length} <small>件</small>`,'来源：Go 服务资产库 · 删除后即时同步')}${metric('已核验主机',`${verified} <small>/ ${assets.length}</small>`,'<span class="status-dot"></span>已批准 SSH 主机指纹')}${metric('待核验',`${pending} <small>项</small>`,`<span class="text-amber">${offline} 台离线</span>`,pending?'amber':'green')}${metric('终端会话','已启用','SSH WebSocket · trzsz 文件传输')}</div>
     ${panel('资产全生命周期',`<div class="flow-strip">${[['01','采购申请','企微审批','procurement'],['02','验收入库','建立资产卡片','procurement'],['03','领用交付','责任到人','circulation'],['04','运营维护','主机 / 网络 / PVE','hosts'],['05','盘点对账','实物与账务核实','inventory'],['06','退役处置','安全擦除 / 归档','governance']].map((s,i)=>`${i?'<span class="flow-arrow">›</span>':''}<div class="flow-step"><span class="flow-number">${s[0]}</span><div><button class="op-btn op-btn-link" data-action="go" data-page="${s[3]}">${s[1]}</button><small style="display:block">${s[2]}</small></div></div>`).join('')}</div>`,badge('全程留痕','green'))}
     <div class="dashboard-middle">${panel('资产出入库趋势',chart,`<button class="op-btn op-btn-small" data-action="toggle-trend">${isHalf?'近 6 个月':'9 月按周'} ⌄</button>`)}${panel('待办与关注',tasks,`<button class="op-btn op-btn-link" data-action="notifications">查看全部 →</button>`)}</div>
-    ${panel('近期资产',`${table(['资产名称 / 编码','资产状态','保管人 / 部门','IP 地址 / 在线状态','采购信息',''],assetRows(assets.slice(0,5),true))}<div class="table-tail"><span>${assets.length?'最近登记 '+Math.min(5,assets.length)+' 条 · 共 '+assets.length+' 条':'尚未登记资产'}</span><span>数据来源 Go 服务资产库</span></div>`,`<div class="row">${button('＋ 登记资产','new-asset',true)}<button class="op-btn op-btn-link" data-action="go" data-page="assets">全部资产 →</button></div>`)}
+    ${panel('近期资产',`${table(['资产名称 / 编码','资产状态','保管人 / 部门','IP 地址 / 在线状态','采购信息',''],assetRows(assets.slice(0,5),true))}<div class="table-tail"><span>${assets.length?'最近登记 '+Math.min(5,assets.length)+' 条 · 共 '+assets.length+' 条':(window.QiyunAPI?.assetStatus?.().loaded===false?'资产清单未载入（不会自动清空）':'尚未登记资产')}</span><span>数据来源 Go 服务资产库</span></div>`,`<div class="row">${button('＋ 登记资产','new-asset',true)}<button class="op-btn op-btn-link" data-action="go" data-page="assets">全部资产 →</button></div>`)}
     <div class="notice green between"><span>季度与年终盘点 · 核实数量、保管人和实际位置</span><button class="op-btn op-btn-link" data-action="go" data-page="inventory">继续盘点 →</button></div>`;
   };
   pages.assets=()=>{
+    const assetLoad=window.QiyunAPI?.assetStatus?.()||{loaded:true};
+    // 载入失败必须说出来：把“没读到”画成“没有资产”会让人以为数据丢了。
+    const loadNotice=assetLoad.loaded?'':`<div class="notice amber between"><span>${assetLoad.error?'资产清单载入失败：'+escape(assetLoad.error.message||'无法连接 Go 服务')+(assetLoad.retrying?' · 正在自动重试':''):'正在从 Go 服务载入资产清单…'}</span>${assetLoad.error?button('⟳ 重新载入','reload-assets'):''}</div>`;
     const filtered=assets.filter(a=>(state.filter==='all'||a.status===state.filter||a.online===state.filter)&&Object.values(a).join(' ').toLowerCase().includes(state.query.toLowerCase()));
-    return `<div class="toolbar"><div class="row"><label><input id="asset-search" aria-label="筛选资产" placeholder="资产名称、编码、IP、领用人" value="${escape(state.query)}"></label><button class="op-btn" data-action="search-assets">搜索</button><select id="asset-filter" aria-label="资产状态筛选">${[['all','全部状态'],['在用','在用'],['待核验','待核验'],['离线','离线']].map(s=>`<option value="${s[0]}" ${state.filter===s[0]?'selected':''}>${s[1]}</option>`).join('')}</select></div><div class="row">${button('↓ 导出台账','export-assets')}${button('＋ 登记资产','new-asset',true)}</div></div>
-    ${panel('全部资产',`${assets.length?table(['资产名称 / 编码','资产状态','保管人 / 部门','IP 地址 / 在线状态','采购信息',''],assetRows(filtered)):'<div class="empty-state" style="padding:44px 0;text-align:center"><p>还没有登记任何资产</p><p class="small muted" style="margin-top:8px">添加 Linux 主机后，凭据加密保存在服务端，可核验指纹并打开真实终端。</p><div class="row" style="justify-content:center;margin-top:16px">'+button('＋ 添加真实主机','new-ssh-asset',true)+'</div></div>'}<div class="table-tail"><span>显示 ${filtered.length} 条 · 全部 ${assets.length} 条（来自 Go 服务资产库）</span><span>点击资产名称查看完整档案</span></div>`,badge('单一数据源','neutral'))}
+    return `${loadNotice}<div class="toolbar"><div class="row"><label><input id="asset-search" aria-label="筛选资产" placeholder="资产名称、编码、IP、领用人" value="${escape(state.query)}"></label><button class="op-btn" data-action="search-assets">搜索</button><select id="asset-filter" aria-label="资产状态筛选">${[['all','全部状态'],['在用','在用'],['待核验','待核验'],['离线','离线']].map(s=>`<option value="${s[0]}" ${state.filter===s[0]?'selected':''}>${s[1]}</option>`).join('')}</select></div><div class="row">${button('↓ 导出台账','export-assets')}${button('＋ 登记资产','new-asset',true)}</div></div>
+    ${panel('全部资产',`${assets.length?table(['资产名称 / 编码','资产状态','保管人 / 部门','IP 地址 / 在线状态','采购信息',''],assetRows(filtered)):'<div class="empty-state" style="padding:44px 0;text-align:center"><p>'+(assetLoad.loaded?'还没有登记任何资产':'资产清单尚未载入')+'</p><p class="small muted" style="margin-top:8px">'+(assetLoad.loaded?'添加 Linux 主机后，凭据加密保存在服务端，可核验指纹并打开真实终端。':'上方重试成功后会自动恢复；服务端资产不会被清空。')+'</p><div class="row" style="justify-content:center;margin-top:16px">'+button('＋ 添加真实主机','new-ssh-asset',true)+'</div></div>'}<div class="table-tail"><span>显示 ${filtered.length} 条 · 全部 ${assets.length} 条（来自 Go 服务资产库）</span><span>点击资产名称查看完整档案</span></div>`,badge('单一数据源','neutral'))}
     <div class="grid-3">${panel('数据来源','<div class="small muted">本页资产全部来自 Go 服务 SQLite 资产库，与远程终端共用同一份数据；在终端删除资产后此处立即消失。<br>带“未持久化”标记的行由尚未接入服务端的采购/入库流程临时创建。</div>')}${panel('责任与归属','<div class="small muted">保管人、使用人、部门、位置与费用归属分别保存，调拨后保留历史快照。</div>')}${panel('观测可信度','<div class="small muted">在线状态来自主机指纹核验与最近一次连接；未核验资产显示“待核验”，不推断其在线与否。</div>')}</div>`;
   };
   function kv(pairs){return `<div class="details-grid">${pairs.map(p=>`<div><div class="detail-label">${p[0]}</div><div class="detail-value">${p[1]}</div></div>`).join('')}</div>`;}
@@ -215,6 +221,7 @@ var AssetDemo = window.AssetDemo = (() => {
     'toggle-trend':()=>{state.trend=state.trend==='half'?'month':'half';render();},
     'asset-detail':b=>showAsset(b.dataset.id),'asset-tab':b=>showAsset(state.detailId,b.dataset.tab),
     'search-assets':()=>{state.query=root.querySelector('#asset-search').value;render();},
+    'reload-assets':async()=>{try{await window.QiyunAPI.refreshAssets();syncAssets();render();toast('资产清单已重新载入。');}catch(error){toast('仍无法载入资产清单：'+error.message);render();}},
     'export-assets':()=>{const list=assets.filter(a=>(state.filter==='all'||a.status===state.filter||a.online===state.filter)&&Object.values(a).join(' ').toLowerCase().includes(state.query.toLowerCase()));const cell=v=>{let s=String(v);if(/^[\s]*[=+@-]|^[\t\r\n]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"';};download('资产台账-'+new Date().toISOString().slice(0,10)+'.csv','\ufeff'+[['资产编码','名称','状态','保管人','部门','IP','MAC','在线状态','最近更新','供应商','采购价（元）','购买日期'],...list.map(a=>[a.id,a.name,a.status,a.owner,a.dept,a.ip,a.mac,a.online,a.lastSeen,a.supplier,a.priceCents?(a.priceCents/100).toFixed(2):'',a.purchased==='—'?'':a.purchased])].map(r=>r.map(cell).join(',')).join('\r\n'),'text/csv;charset=utf-8');},
     'new-asset':()=>modal('登记资产',`<div class="notice">两种方式，请按是否需要远程登录选择：</div><div class="stack" style="margin-top:16px">
       <div class="between"><div><strong class="small">添加 Linux 主机（真实 SSH）</strong><p class="small muted">写入 Go 服务资产库 · 凭据 AES-GCM 加密 · 需核验主机指纹后才能连接</p></div>${button('去添加','new-ssh-asset',true)}</div>
@@ -239,6 +246,7 @@ var AssetDemo = window.AssetDemo = (() => {
     window.addEventListener('openai:set_globals',e=>{const saved=e.detail?.globals?.widgetState?.modelContent;if(saved?.prototype==='栖云资产与应用运维 v0.4'&&pages[saved.page]&&state.page!==saved.page){state.page=saved.page;render();}});
     syncAssets();
     window.QiyunAPI?.onAssets?.(syncAssets);
+    window.QiyunAPI?.onAssetsError?.(() => { syncAssets(); if (state.page === 'assets' || state.page === 'overview') { try { render(); } catch { /* before first paint */ } } });
     window.AdminShell?.mount();
     render();
     if(globalThis.Tweak && !window.AdminShell){const design={density:'舒展',accent:'#07836c'};const tweak=new Tweak({container:root,onChange:()=>{root.style.setProperty('--accent-color',design.accent);root.classList.toggle('compact-design',design.density==='紧凑');}});tweak.addSelect(design,'density',{label:'信息密度',options:['舒展','紧凑']});tweak.addColorPicker(design,'accent',{label:'品牌强调色'});}

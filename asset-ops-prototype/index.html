@@ -209,6 +209,48 @@
 @media (max-width:900px){#asset-app .terminal-shell{grid-template-columns:210px minmax(520px,1fr);overflow:auto}.terminal-workspace-status span:last-child{display:none}}
 @media (max-width:640px){#asset-app .terminal-shell{display:block;height:auto;min-height:0;overflow:visible}.terminal-assets{height:270px;border-right:0!important;border-bottom:1px solid var(--line)}.terminal-stage{height:620px}.terminal-panes.layout-columns,.terminal-panes.layout-grid{grid-template-columns:1fr!important;grid-auto-rows:minmax(0,1fr)}.terminal-workspace-status{display:none}.terminal-session-tabs>button{min-width:160px}}
 
+/* 大文件传输抽屉：与终端会话解耦，切换标签或全屏都不影响任务 */
+.transfer-drawer{position:fixed;top:0;right:0;bottom:0;width:min(400px,100vw);z-index:80;display:flex;flex-direction:column;background:#fff;border-left:1px solid #d7e0da;box-shadow:-12px 0 32px rgba(16,32,24,.14);font-size:13px;color:#1d2a24}
+.transfer-drawer[hidden]{display:none}
+.transfer-drawer>header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #e6ece8}
+.transfer-drawer>header h3{margin:0;font-size:15px}
+.transfer-drawer>header button{border:0;background:transparent;font-size:20px;line-height:1;cursor:pointer;color:#5d6f66}
+.transfer-body{flex:1;overflow:auto;padding:14px 16px 24px;display:flex;flex-direction:column;gap:12px}
+.transfer-seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:3px;background:#f0f4f2;border-radius:8px}
+.transfer-seg button{border:0;background:transparent;padding:7px 0;border-radius:6px;cursor:pointer;font-size:13px;color:#4a5a52}
+.transfer-seg button[aria-selected="true"]{background:#fff;color:#0f3d2b;font-weight:600;box-shadow:0 1px 2px rgba(16,32,24,.12)}
+.transfer-field{display:flex;flex-direction:column;gap:5px}
+.transfer-field>span{font-size:12px;color:#5d6f66}
+.transfer-field input,.transfer-field select{width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cfdad3;border-radius:6px;font:inherit;background:#fff}
+.transfer-field input:focus,.transfer-field select:focus{outline:2px solid #55d2a1;outline-offset:1px;border-color:#55d2a1}
+.transfer-check{display:flex;align-items:center;gap:7px;font-size:12px;color:#40514a}
+.transfer-start{border:0;border-radius:7px;padding:10px;background:#12684a;color:#fff;font-weight:600;cursor:pointer}
+.transfer-start:disabled{opacity:.6;cursor:progress}
+.transfer-hint{margin:0;font-size:11.5px;line-height:1.55;color:#6b7c73}
+.transfer-target-note{margin:-2px 0 2px;font-size:11.5px;line-height:1.55;color:#6b7c73}
+.transfer-target-note[data-mismatch="true"]{margin:0;padding:8px 10px;border:1px solid #f0dcb4;border-radius:6px;background:#fff8e8;color:#a4681c}
+.transfer-list-head{display:flex;align-items:center;justify-content:space-between;padding-top:6px;border-top:1px solid #e6ece8;font-size:12px;color:#5d6f66}
+.transfer-list-head button{border:0;background:transparent;color:#12684a;cursor:pointer;font-size:12px}
+.transfer-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.transfer-task{border:1px solid #e2e9e5;border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px;background:#fbfdfc}
+.transfer-task[data-state="failed"]{border-color:#f0c9c9;background:#fff8f8}
+.transfer-task[data-state="completed"]{border-color:#c8e8d8}
+.transfer-task-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.transfer-task-head strong{font-size:12.5px;overflow-wrap:anywhere}
+.transfer-task-head span{font-size:11px;color:#5d6f66;white-space:nowrap}
+.transfer-bar{height:6px;border-radius:99px;background:#e8efeb;overflow:hidden}
+.transfer-bar i{display:block;height:100%;background:linear-gradient(90deg,#12684a,#55d2a1);transition:width .2s ease}
+.transfer-meta{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#6b7c73}
+.transfer-meta .mono{font-family:"Cascadia Mono",Consolas,monospace;overflow-wrap:anywhere;text-align:right}
+.transfer-rate{color:#12684a;font-variant-numeric:tabular-nums}
+.transfer-rate span:first-child{font-weight:600}
+.transfer-error{margin:0;font-size:11.5px;color:#a12d2d;overflow-wrap:anywhere}
+.transfer-task-actions{display:flex;gap:6px;justify-content:flex-end}
+.transfer-task-actions button{border:1px solid #cfdad3;background:#fff;border-radius:6px;padding:4px 9px;font-size:11.5px;cursor:pointer;color:#2f443b}
+.transfer-task-actions button:hover{border-color:#55d2a1;color:#0f3d2b}
+.transfer-empty{margin:0;padding:18px 0;text-align:center;font-size:12px;color:#8a9a91}
+@media (max-width:720px){.transfer-drawer{width:100vw}}
+
 /* Font Awesome 5 icons, source evidence and license in assets/admin/. */
 #asset-app .vab-icon-arrow-alt-circle-left{--icon-image:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48cGF0aCBkPSJNMjU2IDUwNEMxMTkgNTA0IDggMzkzIDggMjU2UzExOSA4IDI1NiA4czI0OCAxMTEgMjQ4IDI0OC0xMTEgMjQ4LTI0OCAyNDh6bTExNi0yOTJIMjU2di03MC45YzAtMTAuNy0xMy0xNi4xLTIwLjUtOC41TDEyMS4yIDI0Ny41Yy00LjcgNC43LTQuNyAxMi4yIDAgMTYuOWwxMTQuMyAxMTQuOWM3LjYgNy42IDIwLjUgMi4yIDIwLjUtOC41VjMwMGgxMTZjNi42IDAgMTItNS40IDEyLTEydi02NGMwLTYuNi01LjQtMTItMTItMTJ6Ii8+PC9zdmc+")}
 #asset-app .vab-icon-arrow-alt-circle-right{--icon-image:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48cGF0aCBkPSJNMjU2IDhjMTM3IDAgMjQ4IDExMSAyNDggMjQ4UzM5MyA1MDQgMjU2IDUwNCA4IDM5MyA4IDI1NiAxMTkgOCAyNTYgOHpNMTQwIDMwMGgxMTZ2NzAuOWMwIDEwLjcgMTMgMTYuMSAyMC41IDguNWwxMTQuMy0xMTQuOWM0LjctNC43IDQuNy0xMi4yIDAtMTYuOWwtMTE0LjMtMTE1Yy03LjYtNy42LTIwLjUtMi4yLTIwLjUgOC41VjIxMkgxNDBjLTYuNiAwLTEyIDUuNC0xMiAxMnY2NGMwIDYuNiA1LjQgMTIgMTIgMTJ6Ii8+PC9zdmc+")}
@@ -492,8 +534,11 @@ var AssetDemo = window.AssetDemo = (() => {
   }
   function syncAssets() {
     const api = window.QiyunAPI;
+    const status = api?.assetStatus?.() || { loaded: true };
     const remote = (api?.getAssets?.() || []).map(ledgerRow);
     const local = assets.filter(a => a.source === 'local');
+    // 清单还没读到（或读失败）时不要用空数组覆盖已有台账，否则界面会误报“资产消失”。
+    if (!status.loaded && remote.length === 0 && assets.some(a => a.source === 'api')) return;
     // Mutate in place: other modules hold a reference to this array.
     assets.length = 0;
     assets.push(...local, ...remote);
@@ -551,13 +596,16 @@ var AssetDemo = window.AssetDemo = (() => {
     return `<div class="grid-4">${metric('资产总量',`${assets.length} <small>件</small>`,'来源：Go 服务资产库 · 删除后即时同步')}${metric('已核验主机',`${verified} <small>/ ${assets.length}</small>`,'<span class="status-dot"></span>已批准 SSH 主机指纹')}${metric('待核验',`${pending} <small>项</small>`,`<span class="text-amber">${offline} 台离线</span>`,pending?'amber':'green')}${metric('终端会话','已启用','SSH WebSocket · trzsz 文件传输')}</div>
     ${panel('资产全生命周期',`<div class="flow-strip">${[['01','采购申请','企微审批','procurement'],['02','验收入库','建立资产卡片','procurement'],['03','领用交付','责任到人','circulation'],['04','运营维护','主机 / 网络 / PVE','hosts'],['05','盘点对账','实物与账务核实','inventory'],['06','退役处置','安全擦除 / 归档','governance']].map((s,i)=>`${i?'<span class="flow-arrow">›</span>':''}<div class="flow-step"><span class="flow-number">${s[0]}</span><div><button class="op-btn op-btn-link" data-action="go" data-page="${s[3]}">${s[1]}</button><small style="display:block">${s[2]}</small></div></div>`).join('')}</div>`,badge('全程留痕','green'))}
     <div class="dashboard-middle">${panel('资产出入库趋势',chart,`<button class="op-btn op-btn-small" data-action="toggle-trend">${isHalf?'近 6 个月':'9 月按周'} ⌄</button>`)}${panel('待办与关注',tasks,`<button class="op-btn op-btn-link" data-action="notifications">查看全部 →</button>`)}</div>
-    ${panel('近期资产',`${table(['资产名称 / 编码','资产状态','保管人 / 部门','IP 地址 / 在线状态','采购信息',''],assetRows(assets.slice(0,5),true))}<div class="table-tail"><span>${assets.length?'最近登记 '+Math.min(5,assets.length)+' 条 · 共 '+assets.length+' 条':'尚未登记资产'}</span><span>数据来源 Go 服务资产库</span></div>`,`<div class="row">${button('＋ 登记资产','new-asset',true)}<button class="op-btn op-btn-link" data-action="go" data-page="assets">全部资产 →</button></div>`)}
+    ${panel('近期资产',`${table(['资产名称 / 编码','资产状态','保管人 / 部门','IP 地址 / 在线状态','采购信息',''],assetRows(assets.slice(0,5),true))}<div class="table-tail"><span>${assets.length?'最近登记 '+Math.min(5,assets.length)+' 条 · 共 '+assets.length+' 条':(window.QiyunAPI?.assetStatus?.().loaded===false?'资产清单未载入（不会自动清空）':'尚未登记资产')}</span><span>数据来源 Go 服务资产库</span></div>`,`<div class="row">${button('＋ 登记资产','new-asset',true)}<button class="op-btn op-btn-link" data-action="go" data-page="assets">全部资产 →</button></div>`)}
     <div class="notice green between"><span>季度与年终盘点 · 核实数量、保管人和实际位置</span><button class="op-btn op-btn-link" data-action="go" data-page="inventory">继续盘点 →</button></div>`;
   };
   pages.assets=()=>{
+    const assetLoad=window.QiyunAPI?.assetStatus?.()||{loaded:true};
+    // 载入失败必须说出来：把“没读到”画成“没有资产”会让人以为数据丢了。
+    const loadNotice=assetLoad.loaded?'':`<div class="notice amber between"><span>${assetLoad.error?'资产清单载入失败：'+escape(assetLoad.error.message||'无法连接 Go 服务')+(assetLoad.retrying?' · 正在自动重试':''):'正在从 Go 服务载入资产清单…'}</span>${assetLoad.error?button('⟳ 重新载入','reload-assets'):''}</div>`;
     const filtered=assets.filter(a=>(state.filter==='all'||a.status===state.filter||a.online===state.filter)&&Object.values(a).join(' ').toLowerCase().includes(state.query.toLowerCase()));
-    return `<div class="toolbar"><div class="row"><label><input id="asset-search" aria-label="筛选资产" placeholder="资产名称、编码、IP、领用人" value="${escape(state.query)}"></label><button class="op-btn" data-action="search-assets">搜索</button><select id="asset-filter" aria-label="资产状态筛选">${[['all','全部状态'],['在用','在用'],['待核验','待核验'],['离线','离线']].map(s=>`<option value="${s[0]}" ${state.filter===s[0]?'selected':''}>${s[1]}</option>`).join('')}</select></div><div class="row">${button('↓ 导出台账','export-assets')}${button('＋ 登记资产','new-asset',true)}</div></div>
-    ${panel('全部资产',`${assets.length?table(['资产名称 / 编码','资产状态','保管人 / 部门','IP 地址 / 在线状态','采购信息',''],assetRows(filtered)):'<div class="empty-state" style="padding:44px 0;text-align:center"><p>还没有登记任何资产</p><p class="small muted" style="margin-top:8px">添加 Linux 主机后，凭据加密保存在服务端，可核验指纹并打开真实终端。</p><div class="row" style="justify-content:center;margin-top:16px">'+button('＋ 添加真实主机','new-ssh-asset',true)+'</div></div>'}<div class="table-tail"><span>显示 ${filtered.length} 条 · 全部 ${assets.length} 条（来自 Go 服务资产库）</span><span>点击资产名称查看完整档案</span></div>`,badge('单一数据源','neutral'))}
+    return `${loadNotice}<div class="toolbar"><div class="row"><label><input id="asset-search" aria-label="筛选资产" placeholder="资产名称、编码、IP、领用人" value="${escape(state.query)}"></label><button class="op-btn" data-action="search-assets">搜索</button><select id="asset-filter" aria-label="资产状态筛选">${[['all','全部状态'],['在用','在用'],['待核验','待核验'],['离线','离线']].map(s=>`<option value="${s[0]}" ${state.filter===s[0]?'selected':''}>${s[1]}</option>`).join('')}</select></div><div class="row">${button('↓ 导出台账','export-assets')}${button('＋ 登记资产','new-asset',true)}</div></div>
+    ${panel('全部资产',`${assets.length?table(['资产名称 / 编码','资产状态','保管人 / 部门','IP 地址 / 在线状态','采购信息',''],assetRows(filtered)):'<div class="empty-state" style="padding:44px 0;text-align:center"><p>'+(assetLoad.loaded?'还没有登记任何资产':'资产清单尚未载入')+'</p><p class="small muted" style="margin-top:8px">'+(assetLoad.loaded?'添加 Linux 主机后，凭据加密保存在服务端，可核验指纹并打开真实终端。':'上方重试成功后会自动恢复；服务端资产不会被清空。')+'</p><div class="row" style="justify-content:center;margin-top:16px">'+button('＋ 添加真实主机','new-ssh-asset',true)+'</div></div>'}<div class="table-tail"><span>显示 ${filtered.length} 条 · 全部 ${assets.length} 条（来自 Go 服务资产库）</span><span>点击资产名称查看完整档案</span></div>`,badge('单一数据源','neutral'))}
     <div class="grid-3">${panel('数据来源','<div class="small muted">本页资产全部来自 Go 服务 SQLite 资产库，与远程终端共用同一份数据；在终端删除资产后此处立即消失。<br>带“未持久化”标记的行由尚未接入服务端的采购/入库流程临时创建。</div>')}${panel('责任与归属','<div class="small muted">保管人、使用人、部门、位置与费用归属分别保存，调拨后保留历史快照。</div>')}${panel('观测可信度','<div class="small muted">在线状态来自主机指纹核验与最近一次连接；未核验资产显示“待核验”，不推断其在线与否。</div>')}</div>`;
   };
   function kv(pairs){return `<div class="details-grid">${pairs.map(p=>`<div><div class="detail-label">${p[0]}</div><div class="detail-value">${p[1]}</div></div>`).join('')}</div>`;}
@@ -587,6 +635,7 @@ var AssetDemo = window.AssetDemo = (() => {
     'toggle-trend':()=>{state.trend=state.trend==='half'?'month':'half';render();},
     'asset-detail':b=>showAsset(b.dataset.id),'asset-tab':b=>showAsset(state.detailId,b.dataset.tab),
     'search-assets':()=>{state.query=root.querySelector('#asset-search').value;render();},
+    'reload-assets':async()=>{try{await window.QiyunAPI.refreshAssets();syncAssets();render();toast('资产清单已重新载入。');}catch(error){toast('仍无法载入资产清单：'+error.message);render();}},
     'export-assets':()=>{const list=assets.filter(a=>(state.filter==='all'||a.status===state.filter||a.online===state.filter)&&Object.values(a).join(' ').toLowerCase().includes(state.query.toLowerCase()));const cell=v=>{let s=String(v);if(/^[\s]*[=+@-]|^[\t\r\n]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"';};download('资产台账-'+new Date().toISOString().slice(0,10)+'.csv','\ufeff'+[['资产编码','名称','状态','保管人','部门','IP','MAC','在线状态','最近更新','供应商','采购价（元）','购买日期'],...list.map(a=>[a.id,a.name,a.status,a.owner,a.dept,a.ip,a.mac,a.online,a.lastSeen,a.supplier,a.priceCents?(a.priceCents/100).toFixed(2):'',a.purchased==='—'?'':a.purchased])].map(r=>r.map(cell).join(',')).join('\r\n'),'text/csv;charset=utf-8');},
     'new-asset':()=>modal('登记资产',`<div class="notice">两种方式，请按是否需要远程登录选择：</div><div class="stack" style="margin-top:16px">
       <div class="between"><div><strong class="small">添加 Linux 主机（真实 SSH）</strong><p class="small muted">写入 Go 服务资产库 · 凭据 AES-GCM 加密 · 需核验主机指纹后才能连接</p></div>${button('去添加','new-ssh-asset',true)}</div>
@@ -611,6 +660,7 @@ var AssetDemo = window.AssetDemo = (() => {
     window.addEventListener('openai:set_globals',e=>{const saved=e.detail?.globals?.widgetState?.modelContent;if(saved?.prototype==='栖云资产与应用运维 v0.4'&&pages[saved.page]&&state.page!==saved.page){state.page=saved.page;render();}});
     syncAssets();
     window.QiyunAPI?.onAssets?.(syncAssets);
+    window.QiyunAPI?.onAssetsError?.(() => { syncAssets(); if (state.page === 'assets' || state.page === 'overview') { try { render(); } catch { /* before first paint */ } } });
     window.AdminShell?.mount();
     render();
     if(globalThis.Tweak && !window.AdminShell){const design={density:'舒展',accent:'#07836c'};const tweak=new Tweak({container:root,onChange:()=>{root.style.setProperty('--accent-color',design.accent);root.classList.toggle('compact-design',design.density==='紧凑');}});tweak.addSelect(design,'density',{label:'信息密度',options:['舒展','紧凑']});tweak.addColorPicker(design,'accent',{label:'品牌强调色'});}
@@ -619,6 +669,243 @@ var AssetDemo = window.AssetDemo = (() => {
 })();
 
 
+
+(function () {
+  'use strict';
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const listeners = new Set();
+  let assets = [];
+  const tokenStore = window.sessionStorage;
+  const token = () => tokenStore.getItem('qiyun.admin-token') || '';
+  const headers = extra => ({ 'Content-Type': 'application/json', ...(token() ? { Authorization: 'Bearer ' + token() } : {}), ...(extra || {}) });
+  async function request(path, options = {}, retried = false) {
+    const response = await fetch(path, { ...options, headers: headers(options.headers) });
+    const body = response.status === 204 ? null : await response.json().catch(() => null);
+    if (response.status === 401 && !retried && typeof window.prompt === 'function') {
+      const value = window.prompt('请输入栖云管理令牌');
+      if (value) { tokenStore.setItem('qiyun.admin-token', value); return request(path, options, true); }
+    }
+    if (!response.ok) {
+      const error = new Error(body?.detail || `HTTP ${response.status}`);
+      error.code = body?.code || 'HTTP_ERROR'; error.status = response.status;
+      error.stage = body?.stage || ''; error.hint = body?.hint || '';
+      throw error;
+    }
+    return body;
+  }
+  function mapAsset(a) {
+    return {
+      id: a.id, assetCode: a.asset_code, name: a.name, type: 'Linux', os: a.os_name || 'Linux', ip: a.address,
+      sshPort: a.ssh_port, owner: a.owner || '未指定', department: a.department || '未分部门', environment: a.environment || '未分环境',
+      status: a.host_key_status === 'verified' ? (a.status === 'offline' ? '离线' : '在线') : '待核验',
+      hostKeyStatus: a.host_key_status, hostKeyFingerprint: a.host_key_fingerprint || '', credentialId: a.credential_id,
+      username: a.username || '', authType: a.auth_type || 'password',
+      assetType: a.asset_type || 'linux_host', serial_number: a.serial_number || '', mac_address: a.mac_address || '',
+      location: a.location || '', price_cents: a.price_cents || 0, purchased_at: a.purchased_at || '',
+      warranty_until: a.warranty_until || '', supplier: a.supplier || '', purchase_order: a.purchase_order || '',
+      updated_at: a.updated_at || '', created_at: a.created_at || ''
+    };
+  }
+  // 资产清单的一次性拉取曾经在失败时只写一条 console.warn：界面会把“没拉到”
+  // 当成“台账为空”，用户看到的是资产消失、没有入口，而服务端数据其实完好。
+  let assetsLoaded = false, assetsError = null, retryTimer = 0, retryDelay = 2000, retryToken = 0;
+  const errorListeners = new Set();
+  function scheduleAssetRetry() {
+    const token = ++retryToken;
+    retryTimer = setTimeout(() => {
+      // 令牌变化说明期间已成功载入，这次排队直接作废，避免无谓的重复请求。
+      if (token !== retryToken) return;
+      retryTimer = 0;
+      refreshAssets().catch(() => {});
+    }, retryDelay);
+    retryDelay = Math.min(retryDelay * 2, 30000);
+  }
+  async function refreshAssets() {
+    let data;
+    try {
+      data = await request('/api/v1/assets');
+    } catch (error) {
+      assetsError = error;
+      errorListeners.forEach(fn => { try { fn(error); } catch {} });
+      // 只在从未成功载入时自动重试；已有清单时交给用户手动刷新，避免打扰。
+      if (!assetsLoaded) scheduleAssetRetry();
+      throw error;
+    }
+    assets = (data.items || []).map(mapAsset);
+    assetsLoaded = true; assetsError = null; retryDelay = 2000;
+    retryToken++; retryTimer = 0;
+    listeners.forEach(fn => fn(getAssets()));
+    return getAssets();
+  }
+  function getAssets() { return assets.map(a => ({ ...a })); }
+  function assetStatus() { return { loaded: assetsLoaded, error: assetsError, retrying: !!retryTimer }; }
+  function onAssets(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+  function onAssetsError(fn) { errorListeners.add(fn); return () => errorListeners.delete(fn); }
+  function websocketURL(path, ticket) {
+    const url = new URL(path, location.href); url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    url.searchParams.set('ticket', ticket); return url.href;
+  }
+  const gateway = {
+    connect(options) {
+      let ws = null, closed = false, queued = [], currentStatus = 'connecting';
+      const setStatus = (value, detail) => { currentStatus = value; options.onStatus?.(value, detail); };
+      setStatus('connecting');
+      (async () => {
+        try {
+          const session = await request('/api/v1/terminal-sessions', { method: 'POST', body: JSON.stringify({ asset_id: options.hostId, cols: options.cols || 120, rows: options.rows || 32 }) });
+          if (closed) return;
+          ws = new WebSocket(websocketURL(session.ws_url, session.ws_ticket)); ws.binaryType = 'arraybuffer';
+          ws.onopen = () => { queued.splice(0).forEach(data => ws.send(data)); };
+          ws.onmessage = event => {
+            if (typeof event.data === 'string') {
+              let message; try { message = JSON.parse(event.data); } catch { options.onData?.(event.data); return; }
+              if (message.type === 'transfer_tools') {
+                const text = String(message.message || '').replace(/[\x00-\x1f\x7f\x9b]/g, ' ');
+                options.onData?.(`\r\n[文件传输] ${text}\r\n`); return;
+              }
+              if (message.type === 'ready') {
+                options.onData?.('\r\n[传输限制] 下载要求支持 File System Access API 的浏览器及 HTTPS/localhost；不支持时拒绝下载，不使用整文件 Blob。会话最长 8 小时；未承诺 1000G 稳定性或断点续传。\r\n');
+                setStatus('connected'); return;
+              }
+              if (message.type === 'status') { setStatus(message.state); return; }
+              if (message.type === 'error') { options.onData?.(`\r\n[${message.code || 'SSH_ERROR'}] ${message.message || '远程连接失败'}\r\n`); queued = []; closed = true; setStatus('error', { code: message.code, message: message.message }); return; }
+              if (message.type === 'exit') { options.onData?.(`\r\n远程会话已结束，退出码 ${message.exit_code ?? '未知'}。\r\n`); setStatus('offline'); return; }
+              return;
+            }
+            if (event.data instanceof ArrayBuffer) {
+              if (options.onServerOutput) options.onServerOutput(event.data);
+              else options.onData?.(decoder.decode(new Uint8Array(event.data), { stream: true }));
+            }
+          };
+          ws.onerror = () => { queued = []; closed = true; options.onData?.('\r\nSSH WebSocket 连接失败。\r\n'); setStatus('error'); };
+          ws.onclose = () => { queued = []; const wasClosed = closed; closed = true; if (!wasClosed && currentStatus !== 'error') setStatus('offline'); };
+        } catch (error) { queued = []; closed = true; options.onData?.(`\r\n[${error.code || 'SSH_CONNECT_FAILED'}] ${error.message}\r\n`); setStatus('error'); }
+      })();
+      function send(data) {
+        if (closed) return;
+        const size = typeof data === 'string' ? encoder.encode(data).byteLength : data.byteLength;
+        const pending = queued.reduce((n, value) => n + (typeof value === 'string' ? encoder.encode(value).byteLength : value.byteLength), 0);
+        if ((ws?.bufferedAmount || 0) + pending + size > 32 * 1024 * 1024) {
+          closed = true; queued = []; ws?.close(1000, 'send buffer limit');
+          options.onData?.('\r\n[传输中止] 网络发送积压超过 32 MiB，已关闭连接以限制内存；请检查网络后重连。\r\n');
+          setStatus('error'); return;
+        }
+        if (ws?.readyState === WebSocket.OPEN) ws.send(data); else queued.push(data);
+      }
+      return {
+        write(data) {
+          const bytes = typeof data === 'string' ? encoder.encode(data) : data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+          for (let offset = 0; offset < bytes.byteLength; offset += 65536) send(bytes.slice(offset, offset + 65536));
+        },
+        resize(cols, rows) { send(JSON.stringify({ type: 'resize', cols, rows })); },
+        sendFiles(files) { options.onTransferUnavailable?.(files); },
+        close() { closed = true; queued = []; if (ws && ws.readyState < WebSocket.CLOSING) ws.close(1000, 'client close'); }
+      };
+    }
+  };
+  window.LinuxTerminalGateway = gateway;
+  window.QiyunAPI = {
+    request, refreshAssets, getAssets, assetStatus, onAssets, onAssetsError, mapAsset,
+    createAsset: body => request('/api/v1/assets', { method: 'POST', body: JSON.stringify(body) }),
+    getAsset: id => request('/api/v1/assets/' + encodeURIComponent(id)),
+    updateAsset: (id, patch) => request('/api/v1/assets/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify(patch) }),
+    deleteAsset: id => request('/api/v1/assets/' + encodeURIComponent(id), { method: 'DELETE' }),
+    scanHostKey: id => request(`/api/v1/assets/${encodeURIComponent(id)}/host-key/scan`, { method: 'POST', body: '{}' }),
+    approveHostKey: (id, scan) => request(`/api/v1/assets/${encodeURIComponent(id)}/host-key/approve`, { method: 'POST', body: JSON.stringify({ host_key: scan.host_key, fingerprint: scan.fingerprint }) }),
+    testAsset: id => request(`/api/v1/assets/${encodeURIComponent(id)}/test`, { method: 'POST', body: '{}' }),
+    diagnoseAsset: id => request(`/api/v1/assets/${encodeURIComponent(id)}/diagnose`, { method: 'POST', body: '{}' }),
+    updateCredential: (id, body) => request(`/api/v1/assets/${encodeURIComponent(id)}/credential`, { method: 'PUT', body: JSON.stringify(body) }),
+    setToken(value) { if (value) tokenStore.setItem('qiyun.admin-token', value); else tokenStore.removeItem('qiyun.admin-token'); }
+  };
+  // 先宣告数据层就绪，再发起首次拉取：早于本文件执行的模块（如 infra.js）靠这个事件补订阅。
+  if (typeof window.dispatchEvent === 'function' && typeof Event === 'function') window.dispatchEvent(new Event('qiyun:api-ready'));
+  refreshAssets().catch(error => console.warn('Asset API unavailable, retrying:', error.message));
+})();
+
+(function () {
+  'use strict';
+  // 主机指标客户端：只负责取数、轮询与广播，渲染留给 infra.js。
+  // 服务端每 60 秒通过 SSH 采样一次；这里拿到的是最近一次结果加上历史曲线。
+  const state = {
+    items: new Map(), interval: 60, fetchedAt: 0, timer: 0,
+    loading: false, error: null, listeners: new Set()
+  };
+
+  function api() { return window.QiyunAPI; }
+  function emit() {
+    state.listeners.forEach(fn => { try { fn(state); } catch (e) { console.warn('host metrics listener failed', e); } });
+  }
+  function put(item) {
+    if (!item || !item.asset_id) return;
+    state.items.set(item.asset_id, item);
+  }
+
+  async function refresh() {
+    if (state.loading || !api()?.request) return state.items;
+    state.loading = true;
+    try {
+      const data = await api().request('/api/v1/metrics');
+      const next = new Map();
+      (data.items || []).forEach(item => next.set(item.asset_id, item));
+      state.items = next;
+      state.interval = data.interval_seconds || 0;
+      state.fetchedAt = Date.now();
+      state.error = null;
+    } catch (error) {
+      state.error = error;
+    } finally {
+      state.loading = false;
+      emit();
+    }
+    return state.items;
+  }
+
+  async function collect(assetId) {
+    if (!api()?.request) throw new Error('服务未就绪');
+    const item = await api().request('/api/v1/metrics/' + encodeURIComponent(assetId) + '/collect', { method: 'POST', body: '{}' });
+    put(item);
+    emit();
+    return item;
+  }
+
+  async function history(assetId, limit = 60) {
+    const data = await api().request('/api/v1/metrics/' + encodeURIComponent(assetId) + '/history?limit=' + limit);
+    return data.samples || [];
+  }
+
+  function get(assetId) { return state.items.get(assetId) || null; }
+
+  function summary() {
+    const items = Array.from(state.items.values());
+    return {
+      total: items.length,
+      ok: items.filter(item => item.status === 'ok').length,
+      failed: items.filter(item => item.status === 'error').length,
+      pending: items.filter(item => item.status === 'pending').length,
+      interval: state.interval,
+      fetchedAt: state.fetchedAt,
+      error: state.error
+    };
+  }
+
+  function start() {
+    stop();
+    const seconds = Math.max(30, state.interval || 60);
+    state.timer = setInterval(() => {
+      // 后台标签页不轮询，避免无意义的 SSH 采样。
+      if (!document.hidden) refresh();
+    }, seconds * 1000);
+  }
+  function stop() {
+    if (state.timer) clearInterval(state.timer);
+    state.timer = 0;
+  }
+  function on(fn) { state.listeners.add(fn); return () => state.listeners.delete(fn); }
+
+  window.HostMetrics = { refresh, collect, history, get, summary, on, start, stop };
+  refresh().then(start).catch(() => {});
+})();
 
 (function () {
   'use strict';
@@ -925,6 +1212,7 @@ var AssetDemo = window.AssetDemo = (() => {
   state.hosts.forEach(h => { const n = h.ip.split('.').pop(); state.leases[n] = { status: 'used', hostname: h.id, mac: h.mac, owner: h.owner, binding: true, managed: true }; });
   // Host inventory mirrors the Go asset store so a deleted asset disappears here.
   function syncHosts() {
+    const status = window.QiyunAPI?.assetStatus?.() || { loaded: true };
     const remote = (window.QiyunAPI?.getAssets?.() || []).map(a => ({
       source: 'api', id: a.id, name: a.name, os: a.os || 'Linux', type: 'Linux', ip: a.ip,
       owner: [a.owner, a.department].filter(Boolean).join(' · ') || '未指定',
@@ -935,6 +1223,8 @@ var AssetDemo = window.AssetDemo = (() => {
       fingerprint: a.hostKeyFingerprint || ''
     }));
     const local = state.hosts.filter(h => h.source !== 'api');
+    // 清单未载入（或载入失败）时保留上一次成功的结果，避免主机页瞬间变成 0 台。
+    if (!status.loaded && remote.length === 0 && state.hosts.some(h => h.source === 'api')) { if (D.state.page === 'hosts') D.render(); return; }
     state.hosts.length = 0;
     state.hosts.push(...remote, ...local);
     const usedNow = {};
@@ -942,11 +1232,30 @@ var AssetDemo = window.AssetDemo = (() => {
     Object.assign(state.leases, usedNow);
     if (D.state.page === 'hosts') D.render();
   }
+  // 指标数据由 host-metrics.js 拉取；这里只做展示与降级。
+  function metricOf(id) { return window.HostMetrics?.get?.(id) || null; }
+  function metricSummary() {
+    return window.HostMetrics?.summary?.() || { total: 0, ok: 0, failed: 0, pending: 0, interval: 0, error: null };
+  }
+  function metricCell(h) {
+    const m = metricOf(h.id);
+    if (m && m.snapshot) {
+      const s = m.snapshot;
+      const stale = m.status === 'error';
+      return `<span class="mono">CPU ${s.cpu_percent}% · 内存 ${s.mem_percent}%</span>`
+        + `<div class="infra-mini-progress"><span style="width:${Math.max(2, Math.min(100, s.mem_percent))}%"></span></div>`
+        + `<small class="muted" style="display:block;margin-top:6px">磁盘 ${s.disk_percent}% · 负载 ${s.load1}</small>`
+        + (stale ? `<small class="infra-error-inline">数据已过期：${esc(m.error || '采集失败')}</small>` : '');
+    }
+    if (m && m.status === 'error') return `<span class="muted">采集失败</span><small class="infra-error-inline">${esc(m.error || '')}</small>`;
+    if (hostAvailable(h)) return '<span class="muted">等待首次采集…</span>';
+    return '<span class="muted">未接入指标采集</span>';
+  }
   state.devices.forEach(d => { const n = d.ip.split('.').pop(); state.leases[n] = { status: 'used', hostname: d.id, mac: d.mac, owner: 'IT 运维', binding: true, managed: true }; });
   [8, 9, 16, 17, 60, 61].forEach(n => { state.leases[n] = { status: 'reserved', hostname: n < 20 ? '基础设施预留' : '新项目预留', mac: '', owner: 'IT 运维', binding: false }; });
   state.leases[45] = { status: 'conflict', hostname: '发现重复地址', mac: '10:FE:ED:21:11:45', owner: '待核查', binding: false };
   const styles = `<style>
-    #asset-app .infra-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px;flex-wrap:wrap}#asset-app .infra-toolbar .row{gap:8px}#asset-app .infra-cell-title{font-weight:650;color:var(--ink)}#asset-app .infra-cell-title+small{display:block;color:#8b9893;margin-top:5px;font-size:11px}#asset-app .infra-mini-progress{width:86px;height:5px;background:#edf2f0;border-radius:6px;margin-top:7px;overflow:hidden}#asset-app .infra-mini-progress span{display:block;height:100%;background:#319981;border-radius:6px}#asset-app .infra-kv{display:grid;grid-template-columns:130px 1fr;gap:15px;font-size:13px;margin:10px 0}#asset-app .infra-kv span:nth-child(odd){color:#819089}#asset-app .infra-kv strong{font-weight:550}#asset-app .infra-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}#asset-app .infra-chip{border:1px solid #e2e9e6;border-radius:6px;padding:7px 9px;font-size:12px;background:var(--canvas)}#asset-app .infra-terminal{background:#142b27;color:#9ad8c6;border-radius:10px;padding:22px;font:12px/1.9 Consolas,monospace;white-space:pre-wrap;min-height:155px}#asset-app .infra-node{padding:20px;border:1px solid #e1e9e5;border-radius:10px;background:#fff}#asset-app .infra-node-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:17px}#asset-app .infra-node-title{font-size:15px;font-weight:650}#asset-app .infra-node-sub{font-size:11px;color:#83958c;margin-top:5px}#asset-app .infra-meter-row{display:flex;justify-content:space-between;font-size:12px;color:#6e8177;margin:13px 0 7px}#asset-app .infra-ip-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin:22px 0}#asset-app .infra-ip{height:55px;border:1px solid #e0e7e4;border-radius:7px;background:var(--canvas);color:#708278;cursor:pointer;font:600 12px inherit;transition:all .12s}#asset-app .infra-ip small{display:block;font-size:9px;font-weight:400;margin-top:4px}#asset-app .infra-ip.used{background:#e7f5ef;border-color:#ceeadf;color:#35876d}#asset-app .infra-ip.reserved{background:#fff6df;border-color:#f5e5b6;color:#ad8841}#asset-app .infra-ip.conflict{background:#fff0ec;border-color:#efc9bf;color:#c46552}#asset-app .infra-ip.selected{outline:2px solid #20876b;outline-offset:2px}#asset-app .infra-legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--sub)}#asset-app .infra-legend span{display:flex;align-items:center;gap:5px}#asset-app .infra-dot{width:7px;height:7px;display:inline-block;border-radius:2px;background:#d7e8df}#asset-app .infra-dot.used{background:#54ab8c}#asset-app .infra-dot.reserved{background:#e4bd60}#asset-app .infra-dot.conflict{background:#de8f7d}#asset-app .infra-chart{width:100%;height:auto;display:block}#asset-app .infra-device-choice{width:100%;border:1px solid #e4ebe7;background:var(--surface);border-radius:8px;margin:0 0 10px;padding:15px;text-align:left;cursor:pointer;color:inherit}#asset-app .infra-device-choice.active{border-color:#68af98;background:#f2faf6}#asset-app .infra-port-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:6px;margin-top:18px}#asset-app .infra-port{border-radius:3px;padding:9px 0;text-align:center;font:10px Consolas,monospace;color:#2f8569;background:#dff0e8;border-bottom:3px solid #8dc9b0}#asset-app .infra-port.down{background:#f0f3f2;color:#99a59f;border-bottom-color:#dfe4e1}#asset-app .infra-port.warn{background:#fff2db;color:#af8b40;border-bottom-color:#e4bf6d}#asset-app .infra-remote-options{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}#asset-app .infra-remote-options>div{padding:16px;border:1px solid #e2e9e5;border-radius:8px}#asset-app .infra-remote-options p{font-size:12px;line-height:1.7;color:#7a8c81;margin:8px 0 13px}#asset-app .infra-ip-layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(270px,1fr);gap:20px}#asset-app .infra-readonly{padding:10px 12px;background:#f3f7f5;border-radius:6px;font:12px Consolas,monospace;color:#49705e}#asset-app .infra-error{color:#c46350;font-size:12px;line-height:1.6;min-height:20px;margin-top:12px}#asset-app .infra-table{width:100%;border-collapse:collapse;font-size:12px}#asset-app .infra-table th{text-align:left;padding:12px 15px;background:var(--canvas);font-size:11px;letter-spacing:.03em;font-weight:500;color:#829287;border-bottom:1px solid #e9eeeb;white-space:nowrap}#asset-app .infra-table td{padding:17px 15px;border-bottom:1px solid #edf1ee;vertical-align:middle}#asset-app .infra-table tbody tr:last-child td{border-bottom:0}#asset-app .infra-table-wrap{overflow:auto}#asset-app .infra-flow-label{font-size:11px;fill:#8b9b91;font-family:inherit}#asset-app .infra-modal-section{margin-top:22px}#asset-app .infra-modal-section h4{font-size:13px;font-weight:600;margin:0 0 10px}#asset-app .infra-subhead{font-size:12px;color:var(--sub);margin:9px 0 20px;line-height:1.6}#asset-app .infra-selected-ip{font-size:25px;letter-spacing:-.03em;font-weight:650;margin:3px 0 10px}#asset-app .infra-snapshot{padding:12px 15px;border-radius:7px;background:var(--soft);color:#7c8e82;font-size:11px;line-height:1.7;margin-top:16px}#asset-app .infra-progress-label{display:flex;justify-content:space-between;margin-bottom:7px;font-size:12px}#asset-app .infra-stat-value{font-size:25px;font-weight:650;letter-spacing:-.03em;color:var(--ink)}#asset-app .infra-session-row{display:flex;justify-content:space-between;border-bottom:1px solid #edf1ee;padding:11px 0;font-size:12px}#asset-app .infra-host-search{border:1px solid #e0e7e3;border-radius:7px;padding:10px 12px;font:inherit;font-size:12px;width:220px}#asset-app .infra-hint{font-size:11px;color:#91a095;margin-top:8px}@media(max-width:980px){#asset-app .infra-ip-layout{grid-template-columns:1fr}#asset-app .infra-port-grid{grid-template-columns:repeat(8,1fr)}}@media(max-width:620px){#asset-app .infra-ip-grid{grid-template-columns:repeat(4,1fr)}#asset-app .infra-remote-options{grid-template-columns:1fr}}
+    #asset-app .infra-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px;flex-wrap:wrap}#asset-app .infra-toolbar .row{gap:8px}#asset-app .infra-cell-title{font-weight:650;color:var(--ink)}#asset-app .infra-cell-title+small{display:block;color:#8b9893;margin-top:5px;font-size:11px}#asset-app .infra-mini-progress{width:86px;height:5px;background:#edf2f0;border-radius:6px;margin-top:7px;overflow:hidden}#asset-app .infra-mini-progress span{display:block;height:100%;background:#319981;border-radius:6px}#asset-app .infra-kv{display:grid;grid-template-columns:130px 1fr;gap:15px;font-size:13px;margin:10px 0}#asset-app .infra-kv span:nth-child(odd){color:#819089}#asset-app .infra-kv strong{font-weight:550}#asset-app .infra-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}#asset-app .infra-chip{border:1px solid #e2e9e6;border-radius:6px;padding:7px 9px;font-size:12px;background:var(--canvas)}#asset-app .infra-terminal{background:#142b27;color:#9ad8c6;border-radius:10px;padding:22px;font:12px/1.9 Consolas,monospace;white-space:pre-wrap;min-height:155px}#asset-app .infra-node{padding:20px;border:1px solid #e1e9e5;border-radius:10px;background:#fff}#asset-app .infra-node-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:17px}#asset-app .infra-node-title{font-size:15px;font-weight:650}#asset-app .infra-node-sub{font-size:11px;color:#83958c;margin-top:5px}#asset-app .infra-meter-row{display:flex;justify-content:space-between;font-size:12px;color:#6e8177;margin:13px 0 7px}#asset-app .infra-ip-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin:22px 0}#asset-app .infra-ip{height:55px;border:1px solid #e0e7e4;border-radius:7px;background:var(--canvas);color:#708278;cursor:pointer;font:600 12px inherit;transition:all .12s}#asset-app .infra-ip small{display:block;font-size:9px;font-weight:400;margin-top:4px}#asset-app .infra-ip.used{background:#e7f5ef;border-color:#ceeadf;color:#35876d}#asset-app .infra-ip.reserved{background:#fff6df;border-color:#f5e5b6;color:#ad8841}#asset-app .infra-ip.conflict{background:#fff0ec;border-color:#efc9bf;color:#c46552}#asset-app .infra-ip.selected{outline:2px solid #20876b;outline-offset:2px}#asset-app .infra-legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--sub)}#asset-app .infra-legend span{display:flex;align-items:center;gap:5px}#asset-app .infra-dot{width:7px;height:7px;display:inline-block;border-radius:2px;background:#d7e8df}#asset-app .infra-dot.used{background:#54ab8c}#asset-app .infra-dot.reserved{background:#e4bd60}#asset-app .infra-dot.conflict{background:#de8f7d}#asset-app .infra-chart{width:100%;height:auto;display:block}#asset-app .infra-device-choice{width:100%;border:1px solid #e4ebe7;background:var(--surface);border-radius:8px;margin:0 0 10px;padding:15px;text-align:left;cursor:pointer;color:inherit}#asset-app .infra-device-choice.active{border-color:#68af98;background:#f2faf6}#asset-app .infra-port-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:6px;margin-top:18px}#asset-app .infra-port{border-radius:3px;padding:9px 0;text-align:center;font:10px Consolas,monospace;color:#2f8569;background:#dff0e8;border-bottom:3px solid #8dc9b0}#asset-app .infra-port.down{background:#f0f3f2;color:#99a59f;border-bottom-color:#dfe4e1}#asset-app .infra-port.warn{background:#fff2db;color:#af8b40;border-bottom-color:#e4bf6d}#asset-app .infra-remote-options{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}#asset-app .infra-remote-options>div{padding:16px;border:1px solid #e2e9e5;border-radius:8px}#asset-app .infra-remote-options p{font-size:12px;line-height:1.7;color:#7a8c81;margin:8px 0 13px}#asset-app .infra-ip-layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(270px,1fr);gap:20px}#asset-app .infra-readonly{padding:10px 12px;background:#f3f7f5;border-radius:6px;font:12px Consolas,monospace;color:#49705e}#asset-app .infra-error{color:#c46350;font-size:12px;line-height:1.6;min-height:20px;margin-top:12px}#asset-app .infra-error-inline{color:#c46350;font-size:11px;display:block;margin-top:6px;line-height:1.5}#asset-app .infra-ms{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}#asset-app .infra-ms>div{padding:14px;border:1px solid #e2e9e5;border-radius:8px;background:var(--canvas)}#asset-app .infra-ms b{display:block;font-size:20px;letter-spacing:-.02em;margin:6px 0}#asset-app .infra-ms small{color:#83958c;font-size:11px}#asset-app .infra-table{width:100%;border-collapse:collapse;font-size:12px}#asset-app .infra-table th{text-align:left;padding:12px 15px;background:var(--canvas);font-size:11px;letter-spacing:.03em;font-weight:500;color:#829287;border-bottom:1px solid #e9eeeb;white-space:nowrap}#asset-app .infra-table td{padding:17px 15px;border-bottom:1px solid #edf1ee;vertical-align:middle}#asset-app .infra-table tbody tr:last-child td{border-bottom:0}#asset-app .infra-table-wrap{overflow:auto}#asset-app .infra-flow-label{font-size:11px;fill:#8b9b91;font-family:inherit}#asset-app .infra-modal-section{margin-top:22px}#asset-app .infra-modal-section h4{font-size:13px;font-weight:600;margin:0 0 10px}#asset-app .infra-subhead{font-size:12px;color:var(--sub);margin:9px 0 20px;line-height:1.6}#asset-app .infra-selected-ip{font-size:25px;letter-spacing:-.03em;font-weight:650;margin:3px 0 10px}#asset-app .infra-snapshot{padding:12px 15px;border-radius:7px;background:var(--soft);color:#7c8e82;font-size:11px;line-height:1.7;margin-top:16px}#asset-app .infra-progress-label{display:flex;justify-content:space-between;margin-bottom:7px;font-size:12px}#asset-app .infra-stat-value{font-size:25px;font-weight:650;letter-spacing:-.03em;color:var(--ink)}#asset-app .infra-session-row{display:flex;justify-content:space-between;border-bottom:1px solid #edf1ee;padding:11px 0;font-size:12px}#asset-app .infra-host-search{border:1px solid #e0e7e3;border-radius:7px;padding:10px 12px;font:inherit;font-size:12px;width:220px}#asset-app .infra-hint{font-size:11px;color:#91a095;margin-top:8px}@media(max-width:980px){#asset-app .infra-ip-layout{grid-template-columns:1fr}#asset-app .infra-port-grid{grid-template-columns:repeat(8,1fr)}}@media(max-width:620px){#asset-app .infra-ip-grid{grid-template-columns:repeat(4,1fr)}#asset-app .infra-remote-options{grid-template-columns:1fr}}
   </style>`;
   const button = (label, action, primary, attrs) => D.button(label, action, primary, attrs || '');
   const tbl = (headers, rows) => `<div class="infra-table-wrap"><table class="infra-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
@@ -978,12 +1287,18 @@ var AssetDemo = window.AssetDemo = (() => {
     const filtered = state.hosts.filter(h => state.hostFilter === 'all' || h.type === state.hostFilter || (state.hostFilter === 'attention' && h.status !== '在线'));
     const available = state.hosts.filter(hostAvailable).length, attention = state.hosts.filter(h => h.status !== '在线').length;
     const rate = state.hosts.length ? ((available / state.hosts.length) * 100).toFixed(1) + '%' : '—';
-    return styles + `<div class="infra-toolbar"><div class="tabs">${[['all','全部主机'],['Windows','Windows'],['Linux','Linux'],['attention',`需关注 ${attention}`]].map(([v,l]) => `<button class="${state.hostFilter === v ? 'active' : ''}" data-action="infra-host-filter" data-filter="${v}">${l}</button>`).join('')}</div><div class="row">${button('采集接入说明','infra-collector')}${button('刷新资产清单','infra-refresh',true)}</div></div>
-    <div class="grid-4">${D.metric('纳管主机', String(state.hosts.length), 'Windows '+state.hosts.filter(h=>h.type==='Windows').length+' · Linux '+state.hosts.filter(h=>h.type==='Linux').length)}${D.metric('在线率', rate, `${available} 台可达 · ${state.hosts.length - available} 台离线或停止`)}${D.metric('主机指标采集', '未接入', 'CPU / 内存 / 磁盘需安装采集器','amber')}${D.metric('数据来源', 'Go 资产库', '与远程终端共用同一份资产数据')}</div>
+    const ms = metricSummary();
+    const metricTone = ms.total === 0 ? 'amber' : (ms.ok ? 'green' : 'red');
+    const metricValue = ms.total === 0 ? (ms.error ? '采集不可用' : '等待采集') : (ms.ok ? '已接入' : '采集失败');
+    const metricHint = ms.error ? esc(ms.error.message || '无法读取指标接口')
+      : ms.total === 0 ? '首次采样进行中，约 1 分钟内出数'
+      : `${ms.ok} 台正常 · ${ms.failed} 台失败 · 每 ${ms.interval || 60} 秒`;
+    return styles + `<div class="infra-toolbar"><div class="tabs">${[['all','全部主机'],['Windows','Windows'],['Linux','Linux'],['attention',`需关注 ${attention}`]].map(([v,l]) => `<button class="${state.hostFilter === v ? 'active' : ''}" data-action="infra-host-filter" data-filter="${v}">${l}</button>`).join('')}</div><div class="row">${button('＋ 添加主机','infra-add-host',true)}${button('立即采集','infra-collect-all')}${button('采集接入说明','infra-collector')}${button('刷新资产清单','infra-refresh')}</div></div>
+    <div class="grid-4">${D.metric('纳管主机', String(state.hosts.length), 'Windows '+state.hosts.filter(h=>h.type==='Windows').length+' · Linux '+state.hosts.filter(h=>h.type==='Linux').length)}${D.metric('在线率', rate, `${available} 台可达 · ${state.hosts.length - available} 台离线或停止`)}${D.metric('主机指标采集', metricValue, metricHint, metricTone)}${D.metric('数据来源', 'Go 资产库', '与远程终端共用同一份资产数据')}</div>
     ${D.panel('主机与系统清单', tbl(['设备 / 资产编号', '系统 / IP 地址', '领用人与部门', '运行状态', '资源使用', '最后更新', '操作'], filtered.map(h => [
-      `<span class="infra-cell-title">${esc(h.name)}</span><small>${h.asset}</small>`, `<span>${esc(h.os)}</span><small class="muted mono" style="display:block;margin-top:6px">${h.ip}:${h.ports}</small>`, esc(h.owner), `${statusBadge(h.status)}<small class="muted" style="display:block;margin-top:7px">${h.idle}</small>`, hostAvailable(h) && h.cpu != null ? `CPU ${h.cpu}% · 内存 ${h.ram}%<div class="infra-mini-progress"><span style="width:${h.ram}%"></span></div>` : '<span class="muted">未接入指标采集</span>', `<span class="small muted">${h.last}</span>`, `<div class="row" style="gap:6px">${button('详情','infra-host-detail',false,`data-host="${h.id}"`)}${button('远程','infra-remote',false,`data-host="${h.id}"`)}</div>`
+      `<span class="infra-cell-title">${esc(h.name)}</span><small>${h.asset}</small>`, `<span>${esc(h.os)}</span><small class="muted mono" style="display:block;margin-top:6px">${h.ip}:${h.ports}</small>`, esc(h.owner), `${statusBadge(h.status)}<small class="muted" style="display:block;margin-top:7px">${h.idle}</small>`, metricCell(h), `<span class="small muted">${h.last}</span>`, `<div class="row" style="gap:6px">${button('详情','infra-host-detail',false,`data-host="${h.id}"`)}${button('远程','infra-remote',false,`data-host="${h.id}"`)}</div>`
     ])), '<span class="small muted">资产来自 Go 服务资产库 · 删除资产后此处同步移除</span>')}
-    <div class="grid-2" style="margin-top:20px">${D.panel('采集范围', `<div class="infra-chips">${['硬件序列号','操作系统与补丁','安装应用','监听端口','登录活动','CPU / 内存 / 磁盘','网卡 / MAC','资产关联'].map(x => `<span class="infra-chip">${x}</span>`).join('')}</div><div class="infra-snapshot">采集方式：Windows Agent / WinRM · Linux Agent / SSH。应用清单与端口需记录采集时间、来源及权限。</div>`)}${D.panel('待接入能力', `<div class="infra-session-row"><span>主机 CPU / 内存 / 磁盘指标采集</span>${badge('未接入','amber')}</div><div class="infra-session-row"><span>已安装软件与补丁清单</span>${badge('未接入','amber')}</div><div class="infra-session-row"><span>登录活动与端口采集</span>${badge('未接入','amber')}</div><div class="infra-hint">以上能力需要主机侧采集器；未接入时页面不展示推断数据，可在远程终端内实时查看。</div>`)}</div>`;
+    <div class="grid-2" style="margin-top:20px">${D.panel('采集范围', `<div class="infra-chips">${['硬件序列号','操作系统与补丁','安装应用','监听端口','登录活动','CPU / 内存 / 磁盘','网卡 / MAC','资产关联'].map(x => `<span class="infra-chip">${x}</span>`).join('')}</div><div class="infra-snapshot">采集方式：Linux 主机已通过 SSH 只读采样（/proc、df）获取 CPU / 内存 / 磁盘；Windows 需 WinRM 或 Agent，尚未接入。</div>`)}${D.panel('待接入能力', `<div class="infra-session-row"><span>主机 CPU / 内存 / 磁盘指标采集</span>${ms.total ? badge('已接入 · SSH 采样','green') : badge('采集中','amber')}</div><div class="infra-session-row"><span>已安装软件与补丁清单</span>${badge('未接入','amber')}</div><div class="infra-session-row"><span>登录活动与端口采集</span>${badge('未接入','amber')}</div><div class="infra-hint">以上能力需要主机侧采集器；未接入时页面不展示推断数据，可在远程终端内实时查看。</div>`)}</div>`;
   }
   function pve() {
     const nodes = [ ['pve-node-01','10.20.30.10','Dell PowerEdge R750',62,71,68], ['pve-node-02','10.20.30.11','Dell PowerEdge R750',38,54,42], ['pve-node-03','10.20.30.12','HPE ProLiant DL380',21,36,29] ];
@@ -1019,9 +1334,28 @@ var AssetDemo = window.AssetDemo = (() => {
       ['<span class="mono">10.20.30.33</span><small class="muted" style="display:block;margin-top:5px">win-rds-01</small>','RDP · 远程桌面','44 Mbps','106 Mbps','27.0 GB',button('会话明细','infra-flow-detail',false,'data-flow="33"')]
     ]),'<span class="small muted">NetFlow / sFlow 规划 · 示例聚合值</span>')}</div>`;
   }
+  // 详情弹窗里的指标区块：有数据报数据，没数据说清楚原因，不画假曲线。
+  function metricSection(h) {
+    const m = metricOf(h.id);
+    const body = m && m.snapshot
+      ? `<div class="infra-ms"><div><small>CPU 使用率</small><b>${m.snapshot.cpu_percent}%</b><small>${m.snapshot.cores} 核 · 负载 ${m.snapshot.load1} / ${m.snapshot.load5} / ${m.snapshot.load15}</small></div><div><small>内存</small><b>${m.snapshot.mem_percent}%</b><small>${gb(m.snapshot.mem_used_bytes)} / ${gb(m.snapshot.mem_total_bytes)} GB</small></div><div><small>磁盘</small><b>${m.snapshot.disk_percent}%</b><small>${(m.snapshot.disks || []).slice(0, 2).map(d => esc(d.mount) + ' ' + d.used_percent + '%').join(' · ') || '无挂载点数据'}</small></div></div>
+        <div class="infra-kv"><span>主机名</span><strong class="mono">${esc(m.snapshot.hostname || '—')}</strong><span>系统</span><strong>${esc(m.snapshot.os || '—')}</strong><span>内核</span><strong class="mono">${esc(m.snapshot.kernel || '—')}</strong><span>运行时长</span><strong>${uptime(m.snapshot.uptime_seconds)}</strong><span>采集时间</span><strong>${m.collected_at ? new Date(m.collected_at).toLocaleString() : '—'}（耗时 ${m.duration_ms} ms）</strong></div>
+        ${m.status === 'error' ? `<div class="notice">最近一次采集失败：${esc(m.error || '')}。上方为上次成功的数据。</div>` : ''}`
+      : m && m.status === 'error'
+        ? `<div class="notice amber">采集失败：${esc(m.error || '')}</div>`
+        : '<div class="infra-snapshot">尚未采集到指标。点击下方“立即采集”通过 SSH 只读采样一次。</div>';
+    return `<div class="infra-modal-section"><h4>资源指标</h4>${body}<div class="row" style="margin-top:12px">${button('立即采集','infra-collect-metrics',false,`data-host="${h.id}"`)}</div></div>`;
+  }
+  function gb(bytes) { return bytes ? (bytes / 1024 / 1024 / 1024).toFixed(1) : '0'; }
+  function uptime(seconds) {
+    const n = Number(seconds) || 0;
+    if (!n) return '—';
+    const d = Math.floor(n / 86400), hh = Math.floor((n % 86400) / 3600);
+    return d ? `${d} 天 ${hh} 小时` : `${hh} 小时 ${Math.floor((n % 3600) / 60)} 分`;
+  }
   function hostDetail(id) {
     const h=state.hosts.find(x=>x.id===id);if(!h)return;
-    D.modal(esc(h.name),`<div class="row" style="gap:10px">${statusBadge(h.status)}<span class="mono muted small">${h.asset} / ${h.id}</span></div><div class="infra-kv" style="margin-top:22px"><span>操作系统</span><strong>${h.os}</strong><span>IP / MAC</span><strong class="mono">${h.ip} / ${h.mac}</strong><span>责任人</span><strong>${esc(h.owner)}</strong><span>最近采集</span><strong>${h.last}</strong><span>使用状态</span><strong>${h.idle}</strong></div><div class="infra-modal-section"><h4>已安装应用 · ${h.apps.length} 项</h4><div class="infra-chips">${h.apps.map(a=>`<span class="infra-chip">${a}</span>`).join('')}</div></div><div class="infra-modal-section"><h4>监听端口</h4>${tbl(['端口 / 协议','服务','检查结论'],h.ports.split(' / ').map(p=>[p+' / TCP',{'22':'OpenSSH','443':'HTTPS','9100':'Node Exporter','3389':'Remote Desktop','445':'SMB','5986':'WinRM TLS','8007':'Proxmox Backup','8080':'应用测试接口'}[p],badge(['445','8080'].includes(p)?'需复核访问范围':'已登记',['445','8080'].includes(p)?'amber':'green')]))}<div class="infra-hint">端口来自主机监听清单；外部可达性需结合防火墙与网络探测。</div></div>`,button('远程管理','infra-remote',true,`data-host="${h.id}"`));
+    D.modal(esc(h.name),`<div class="row" style="gap:10px">${statusBadge(h.status)}<span class="mono muted small">${h.asset} / ${h.id}</span></div><div class="infra-kv" style="margin-top:22px"><span>操作系统</span><strong>${h.os}</strong><span>IP / MAC</span><strong class="mono">${h.ip} / ${h.mac}</strong><span>责任人</span><strong>${esc(h.owner)}</strong><span>最近采集</span><strong>${h.last}</strong><span>使用状态</span><strong>${h.idle}</strong></div>${metricSection(h)}<div class="infra-modal-section"><h4>已安装应用 · ${h.apps.length} 项</h4><div class="infra-chips">${h.apps.map(a=>`<span class="infra-chip">${a}</span>`).join('')}</div></div><div class="infra-modal-section"><h4>监听端口</h4>${tbl(['端口 / 协议','服务','检查结论'],h.ports.split(' / ').map(p=>[p+' / TCP',({'22':'OpenSSH','443':'HTTPS','9100':'Node Exporter','3389':'Remote Desktop','445':'SMB','5986':'WinRM TLS','8007':'Proxmox Backup','8080':'应用测试接口'}[p] || '未登记服务'),badge(['445','8080'].includes(p)?'需复核访问范围':'已登记',['445','8080'].includes(p)?'amber':'green')]))}<div class="infra-hint">端口来自主机监听清单；外部可达性需结合防火墙与网络探测。</div></div>`,button('远程管理','infra-remote',true,`data-host="${h.id}"`));
   }
   function remote(id) {
     const h=requireRemoteHost(id);if(!h)return;state.activeRemoteHost = h.id;
@@ -1054,13 +1388,52 @@ var AssetDemo = window.AssetDemo = (() => {
   }
   D.infrastructure = { getHosts: () => state.hosts.map(h => ({...h, apps:[...(h.apps||[])]})), syncHosts };
   Object.assign(D.pages,{hosts,pve,ipam,network});
-  syncHosts();
-  window.QiyunAPI?.onAssets?.(syncHosts);
+  // infra.js 在打包顺序里早于 terminal-gateway.js，直接订阅时 window.QiyunAPI 还不存在，
+  // 可选链会把订阅静默吞掉，于是这一页永远是“纳管主机 0”。改成等数据层就绪再绑定。
+  let assetSourceBound = false;
+  function bindAssetSource() {
+    if (assetSourceBound) return;
+    assetSourceBound = true;
+    window.QiyunAPI?.onAssets?.(syncHosts);
+    window.QiyunAPI?.onAssetsError?.(() => { if (D.state.page === 'hosts') D.render(); });
+    syncHosts();
+  }
+  window.HostMetrics?.on?.(() => { if (D.state.page === 'hosts') D.render(); });
+  if (window.QiyunAPI) bindAssetSource();
+  else if (typeof window.addEventListener === 'function') window.addEventListener('qiyun:api-ready', bindAssetSource, { once: true });
   Object.assign(D.actions,{
     'infra-host-filter': b=>{state.hostFilter=b.dataset.filter;D.render();},
     'infra-host-detail':b=>hostDetail(b.dataset.host),
     'infra-remote':b=>remote(b.dataset.host),
-    'infra-refresh':async()=>{try{await window.QiyunAPI?.refreshAssets?.();syncHosts();D.render();D.toast('资产清单已从 Go 服务重新载入。');}catch(error){D.toast('刷新失败：'+error.message);}},
+    'infra-add-host':()=>{
+      // 复用终端页那张真实资产表单（写库 + 指纹核验），但不跳页面。
+      const open=D.actions['terminal-add-asset'];
+      if(typeof open==='function')return open();
+      D.navigate('terminal');
+      setTimeout(()=>D.actions['terminal-add-asset']?.(),120);
+    },
+    'infra-collect-metrics':async b=>{
+      const id=b.dataset.host;
+      if(!window.HostMetrics?.collect)return D.toast('指标采集服务未就绪。');
+      D.toast('正在通过 SSH 采集…');
+      try{const item=await window.HostMetrics.collect(id);
+        D.toast(item.status==='ok'?`已采集：CPU ${item.snapshot.cpu_percent}% · 内存 ${item.snapshot.mem_percent}%`:`采集失败：${item.error||'未知原因'}`);
+        if(D.state.page==='hosts')D.render();
+        const open=typeof b.closest==='function'?b.closest('.modal'):null;
+        if(open)hostDetail(id);
+      }catch(error){D.toast('采集请求失败：'+error.message);}
+    },
+    'infra-collect-all':async()=>{
+      if(!window.HostMetrics?.collect)return D.toast('指标采集服务未就绪。');
+      const targets=state.hosts.filter(h=>h.source==='api');
+      if(!targets.length)return D.toast('没有可采集的服务器。');
+      D.toast(`正在采集 ${targets.length} 台主机…`);
+      const results=await Promise.allSettled(targets.map(h=>window.HostMetrics.collect(h.id)));
+      const ok=results.filter(r=>r.status==='fulfilled'&&r.value.status==='ok').length;
+      D.toast(`采集完成：${ok} 台成功，${results.length-ok} 台失败。`);
+      if(D.state.page==='hosts')D.render();
+    },
+    'infra-refresh':async()=>{try{await window.QiyunAPI?.refreshAssets?.();syncHosts();await window.HostMetrics?.refresh?.();D.render();D.toast('资产与指标已重新载入。');}catch(error){D.toast('刷新失败：'+error.message);}},
     'infra-collector':()=>D.modal('主机采集接入规划',`<div class="notice">真实接入尚未配置，以下为原型中的计划范围。</div>${tbl(['对象','建议方式','能力'],[['Windows','Agent / WinRM HTTPS','软件、补丁、性能、登录记录、端口'],['Linux','Agent / SSH 密钥','系统、包清单、监听端口、资源指标'],['网络设备','SNMP v3 / NETCONF','接口、链路、CPU、配置备份'],['流量','NetFlow / sFlow / IPFIX','IP 会话与聚合带宽']])}<div class="infra-snapshot">采集凭据集中托管、限定网段与命令、记录数据来源与采集时间，结合授权边界部署。</div>`),
     'infra-ssh-command':b=>{if(!requireRemoteHost(state.activeRemoteHost))return;const el=D.root.querySelector('#infra-terminal');if(el)el.textContent=b.dataset.command==='disk'?'[演示输出 · 无真实连接]\n$ df -h\nFilesystem      Size  Used Avail Use% Mounted on\n/dev/sda2       118G   46G   66G  42% /\n/dev/sdb1       493G  164G  304G  36% /data':'[演示输出 · 无真实连接]\n$ uptime\n14:32:00 up 42 days, 5:14, 1 user, load average: 0.34, 0.42, 0.38\n\n此命令样例已记录到本地演示会话。';},
     'infra-rdp':b=>{const h=requireRemoteHost(b.dataset.host);if(!h||h.type!=='Windows')return;const content=`full address:s:${h.ip}:3389\r\nprompt for credentials:i:1\r\nauthentication level:i:2\r\nredirectclipboard:i:0\r\nredirectdrives:i:0\r\n`;const blob=new Blob([content],{type:'application/x-rdp'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`DEMO-${h.id}.rdp`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);D.toast('已下载演示地址的 .rdp 配置；使用前请核实目标地址。');},
@@ -1097,107 +1470,6 @@ var AssetDemo = window.AssetDemo = (() => {
     'infra-network-rules':()=>D.modal('网络采集与告警规则',`${tbl(['对象','条件','处理'],[['接口带宽','持续 5 分钟 > 80%','告警 + 接口与责任人关联'],['设备可用性','连续 3 次心跳失败','离线事件 + 恢复记录'],['IP 冲突','同一 IP 发现多个 MAC','核查交换机接口与 DHCP'],['配置漂移','与审批基线存在差异','版本对比 + 变更工单']])}<div class="infra-snapshot">链路指标通过 SNMP v3 采集；每 IP 流量需设备支持 NetFlow / sFlow / IPFIX，并标记采样比例与统计窗口。</div>`),
     'infra-flow-detail':b=>{const suffix=b.dataset.flow;D.modal(`IP 流量详情 · 10.20.30.${suffix}`,`<div class="notice">流量演示 · 时间窗 2026-10-08 14:02–14:32 · 聚合数据</div>${tbl(['方向','目标','协议 / 端口','状态'],suffix==='33'?[['入站','10.20.40.18','TCP / 3389',badge('已建立','green')],['出站','10.20.30.15','TCP / 445',badge('已建立','green')]]:suffix==='15'?[['入站','10.20.30.22','TCP / 8007',badge('已建立','green')],['出站','10.20.20.12','TCP / 22',badge('已建立','green')]]:[['入站','10.20.40.18','TCP / 443',badge('已建立','green')],['出站','10.20.30.22','TCP / 5432',badge('已建立','green')],['出站','10.20.30.23','TCP / 6379',badge('已建立','green')]])}<div class="infra-snapshot">源 / 目的地址、五元组、流量、采样窗口与对应资产关联。真实采集需网设备导出流记录，且受保留周期与访问权限控制。</div>`);}
   });
-})();
-
-(function () {
-  'use strict';
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
-  const listeners = new Set();
-  let assets = [];
-  const tokenStore = window.sessionStorage;
-  const token = () => tokenStore.getItem('qiyun.admin-token') || '';
-  const headers = extra => ({ 'Content-Type': 'application/json', ...(token() ? { Authorization: 'Bearer ' + token() } : {}), ...(extra || {}) });
-  async function request(path, options = {}, retried = false) {
-    const response = await fetch(path, { ...options, headers: headers(options.headers) });
-    const body = response.status === 204 ? null : await response.json().catch(() => null);
-    if (response.status === 401 && !retried && typeof window.prompt === 'function') {
-      const value = window.prompt('请输入栖云管理令牌');
-      if (value) { tokenStore.setItem('qiyun.admin-token', value); return request(path, options, true); }
-    }
-    if (!response.ok) {
-      const error = new Error(body?.detail || `HTTP ${response.status}`);
-      error.code = body?.code || 'HTTP_ERROR'; error.status = response.status;
-      error.stage = body?.stage || ''; error.hint = body?.hint || '';
-      throw error;
-    }
-    return body;
-  }
-  function mapAsset(a) {
-    return {
-      id: a.id, assetCode: a.asset_code, name: a.name, type: 'Linux', os: a.os_name || 'Linux', ip: a.address,
-      sshPort: a.ssh_port, owner: a.owner || '未指定', department: a.department || '未分部门', environment: a.environment || '未分环境',
-      status: a.host_key_status === 'verified' ? (a.status === 'offline' ? '离线' : '在线') : '待核验',
-      hostKeyStatus: a.host_key_status, hostKeyFingerprint: a.host_key_fingerprint || '', credentialId: a.credential_id,
-      username: a.username || '', authType: a.auth_type || 'password',
-      assetType: a.asset_type || 'linux_host', serial_number: a.serial_number || '', mac_address: a.mac_address || '',
-      location: a.location || '', price_cents: a.price_cents || 0, purchased_at: a.purchased_at || '',
-      warranty_until: a.warranty_until || '', supplier: a.supplier || '', purchase_order: a.purchase_order || '',
-      updated_at: a.updated_at || '', created_at: a.created_at || ''
-    };
-  }
-  async function refreshAssets() {
-    const data = await request('/api/v1/assets'); assets = (data.items || []).map(mapAsset); listeners.forEach(fn => fn(getAssets())); return getAssets();
-  }
-  function getAssets() { return assets.map(a => ({ ...a })); }
-  function onAssets(fn) { listeners.add(fn); return () => listeners.delete(fn); }
-  function websocketURL(path, ticket) {
-    const url = new URL(path, location.href); url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    url.searchParams.set('ticket', ticket); return url.href;
-  }
-  const gateway = {
-    connect(options) {
-      let ws = null, closed = false, queued = [], currentStatus = 'connecting';
-      const setStatus = (value, detail) => { currentStatus = value; options.onStatus?.(value, detail); };
-      setStatus('connecting');
-      (async () => {
-        try {
-          const session = await request('/api/v1/terminal-sessions', { method: 'POST', body: JSON.stringify({ asset_id: options.hostId, cols: options.cols || 120, rows: options.rows || 32 }) });
-          if (closed) return;
-          ws = new WebSocket(websocketURL(session.ws_url, session.ws_ticket)); ws.binaryType = 'arraybuffer';
-          ws.onopen = () => { queued.splice(0).forEach(data => ws.send(data)); };
-          ws.onmessage = event => {
-            if (typeof event.data === 'string') {
-              let message; try { message = JSON.parse(event.data); } catch { options.onData?.(event.data); return; }
-              if (message.type === 'ready') { setStatus('connected'); return; }
-              if (message.type === 'status') { setStatus(message.state); return; }
-              if (message.type === 'error') { options.onData?.(`\r\n[${message.code || 'SSH_ERROR'}] ${message.message || '远程连接失败'}\r\n`); queued = []; closed = true; setStatus('error', { code: message.code, message: message.message }); return; }
-              if (message.type === 'exit') { options.onData?.(`\r\n远程会话已结束，退出码 ${message.exit_code ?? '未知'}。\r\n`); setStatus('offline'); return; }
-              return;
-            }
-            if (event.data instanceof ArrayBuffer) {
-              if (options.onServerOutput) options.onServerOutput(event.data);
-              else options.onData?.(decoder.decode(new Uint8Array(event.data), { stream: true }));
-            }
-          };
-          ws.onerror = () => { queued = []; closed = true; options.onData?.('\r\nSSH WebSocket 连接失败。\r\n'); setStatus('error'); };
-          ws.onclose = () => { queued = []; const wasClosed = closed; closed = true; if (!wasClosed && currentStatus !== 'error') setStatus('offline'); };
-        } catch (error) { queued = []; closed = true; options.onData?.(`\r\n[${error.code || 'SSH_CONNECT_FAILED'}] ${error.message}\r\n`); setStatus('error'); }
-      })();
-      function send(data) { if (closed) return; if (ws?.readyState === WebSocket.OPEN) ws.send(data); else queued.push(data); }
-      return {
-        write(data) { send(typeof data === 'string' ? encoder.encode(data) : data); },
-        resize(cols, rows) { send(JSON.stringify({ type: 'resize', cols, rows })); },
-        sendFiles(files) { options.onTransferUnavailable?.(files); },
-        close() { closed = true; queued = []; if (ws && ws.readyState < WebSocket.CLOSING) ws.close(1000, 'client close'); }
-      };
-    }
-  };
-  window.LinuxTerminalGateway = gateway;
-  window.QiyunAPI = {
-    request, refreshAssets, getAssets, onAssets, mapAsset,
-    createAsset: body => request('/api/v1/assets', { method: 'POST', body: JSON.stringify(body) }),
-    getAsset: id => request('/api/v1/assets/' + encodeURIComponent(id)),
-    updateAsset: (id, patch) => request('/api/v1/assets/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify(patch) }),
-    deleteAsset: id => request('/api/v1/assets/' + encodeURIComponent(id), { method: 'DELETE' }),
-    scanHostKey: id => request(`/api/v1/assets/${encodeURIComponent(id)}/host-key/scan`, { method: 'POST', body: '{}' }),
-    approveHostKey: (id, scan) => request(`/api/v1/assets/${encodeURIComponent(id)}/host-key/approve`, { method: 'POST', body: JSON.stringify({ host_key: scan.host_key, fingerprint: scan.fingerprint }) }),
-    testAsset: id => request(`/api/v1/assets/${encodeURIComponent(id)}/test`, { method: 'POST', body: '{}' }),
-    diagnoseAsset: id => request(`/api/v1/assets/${encodeURIComponent(id)}/diagnose`, { method: 'POST', body: '{}' }),
-    updateCredential: (id, body) => request(`/api/v1/assets/${encodeURIComponent(id)}/credential`, { method: 'PUT', body: JSON.stringify(body) }),
-    setToken(value) { if (value) tokenStore.setItem('qiyun.admin-token', value); else tokenStore.removeItem('qiyun.admin-token'); }
-  };
-  refreshAssets().catch(error => console.warn('Asset API unavailable:', error.message));
 })();
 
 (function () {
@@ -1397,6 +1669,14 @@ var AssetDemo = window.AssetDemo = (() => {
   }
   function groupLabel(host) { return state.groupBy === 'environment' ? host.environment || '未分环境' : host.department || '未分部门'; }
   function assetTree() {
+    const status = api?.assetStatus?.() || { loaded: true, error: null };
+    if (!status.loaded) {
+      // 「没有登记主机」和「没读到主机」是两件事：混淆会让人重复添加同一台机器。
+      const body = status.error
+        ? `<p>资产清单载入失败</p><small>${E(status.error.message || '无法读取服务端资产')}${status.retrying ? ' · 正在自动重试' : ''}</small><button type="button" data-action="terminal-reload-assets">⟳ 立即重新载入</button>`
+        : `<p>正在载入资产清单</p><small>正在从 Go 服务读取已登记主机</small>`;
+      return `<aside class="terminal-assets"><div class="terminal-assets-head"><div><strong>Linux 资产</strong><small>${status.error ? '载入失败' : '载入中'}</small></div><button class="terminal-add-asset" data-action="terminal-add-asset" title="添加 Linux 资产" aria-label="添加 Linux 资产">＋</button></div><div class="terminal-empty-tree">${body}</div></aside>`;
+    }
     const query = state.query.toLowerCase(), list = linuxHosts().filter(h => [h.name, h.id, h.ip, h.owner, groupLabel(h)].join(' ').toLowerCase().includes(query));
     const groups = list.reduce((all, host) => ((all[groupLabel(host)] ||= []).push(host), all), {});
     return `<aside class="terminal-assets"><div class="terminal-assets-head"><div><strong>Linux 资产</strong><small>${list.length} 台已登记</small></div><button class="terminal-add-asset" data-action="terminal-add-asset" title="添加 Linux 资产" aria-label="添加 Linux 资产">＋</button></div><label class="terminal-search"><span class="vab-icon vab-icon-search"></span><input id="terminal-search" value="${E(state.query)}" placeholder="搜索名称、IP、负责人"></label><div class="terminal-group-switch" role="group" aria-label="资产分组方式"><button data-action="terminal-group" data-id="department" aria-pressed="${state.groupBy === 'department'}">部门</button><button data-action="terminal-group" data-id="environment" aria-pressed="${state.groupBy === 'environment'}">环境</button></div><p class="terminal-hint">灰：未检测/待复查；绿：SSH 连通；红：SSH 连接失败。点击每台设备的“◎”检查（会尝试认证），不自动检测。</p><div class="terminal-tree">${Object.entries(groups).map(([group, hosts]) => `<section><div class="terminal-tree-group"><span>⌄</span><strong>${E(group)}</strong><small>${hosts.length}</small></div>${hosts.map(host => `<div class="terminal-asset-row" data-reachability="${hostHealth(host.id).state}"><button class="terminal-asset-main" data-action="terminal-open" data-host="${E(host.id)}" ${!fingerprintReady(host) ? 'aria-disabled="true"' : ''}><span class="terminal-host-icon"><span class="vab-icon vab-icon-server"></span></span><span><strong>${E(host.name)}</strong><small>${E(host.ip)} · <span class="terminal-health" role="status" title="${E(hostHealth(host.id).detail)}${hostHealth(host.id).checkedAt ? ' · ' + E(hostHealth(host.id).checkedAt) : ''}">${E(hostHealth(host.id).label)}</span>${fingerprintReady(host) ? '' : ' · 指纹待核验'}</small></span></button>${fingerprintReady(host) ? `<button class="terminal-asset-split" data-action="terminal-open-new" data-host="${E(host.id)}" title="新建独立终端（独立 SSH）" aria-label="新建 ${E(host.name)} 独立终端">＋</button><button class="terminal-asset-split" data-action="terminal-open-split" data-host="${E(host.id)}" title="在当前标签分屏打开" aria-label="在当前标签分屏打开 ${E(host.name)}">⊞</button>` : `<button class="terminal-asset-split" data-action="terminal-verify" data-host="${E(host.id)}" title="扫描并核验 SSH 指纹" aria-label="核验 ${E(host.name)} 的 SSH 指纹">✓</button>`}<button class="terminal-asset-diag" data-action="terminal-diagnose" data-host="${E(host.id)}" title="检查 SSH（单次认证，不自动重试）" aria-label="诊断 ${E(host.name)} 的连接">◎</button><button class="terminal-asset-edit" data-action="terminal-edit-host" data-host="${E(host.id)}" title="编辑资产" aria-label="编辑 ${E(host.name)}">✎</button><button class="terminal-asset-delete" data-action="terminal-delete-asset" data-host="${E(host.id)}" title="删除资产" aria-label="删除 ${E(host.name)}">×</button></div>`).join('')}</section>`).join('') || (linuxHosts().length === 0 ? `<div class="terminal-empty-tree"><p>还没有登记 Linux 主机</p><small>凭据加密保存在服务端，核验指纹后可直接打开终端</small><button type="button" data-action="terminal-add-asset">＋ 添加真实主机</button></div>` : '<div class="empty-state">没有匹配的 Linux 资产</div>')}</div></aside>`;
@@ -1408,7 +1688,7 @@ var AssetDemo = window.AssetDemo = (() => {
   function workspace() {
     const tab = activeTab();
     if (!tab) return `<div class="terminal-empty"><div class="terminal-empty-icon">›_</div><h2>选择一台 Linux 资产开始连接</h2><p>从左侧资产树点击主机，系统将按资产身份自动建立 SSH 会话。</p><div><span>trz 上传</span><span>tsz 下载</span><span>多标签</span><span>分屏同步</span></div></div>`;
-    return `<div class="terminal-session-tabs" role="tablist">${state.tabs.map(t => { const host = getHost(t.hostId); return `<button role="tab" aria-selected="${t.id === state.activeTabId}" data-action="terminal-tab" data-id="${t.id}"><span class="terminal-status terminal-status-${getPane(t.paneIds[0])?.status || 'offline'}"></span><strong>${E(t.title)}</strong><small>${E(host?.ip || '')}</small><span class="terminal-tab-close" data-action="terminal-close-tab" data-id="${t.id}" aria-label="关闭标签">×</span></button>`; }).join('')}</div><div class="terminal-toolbar"><div class="terminal-layouts"><button data-action="terminal-split" data-layout="columns" title="左右分屏" aria-label="左右分屏">◫</button><button data-action="terminal-split" data-layout="rows" title="上下分屏" aria-label="上下分屏">⬒</button><button data-action="terminal-split" data-layout="grid" title="网格分屏" aria-label="网格分屏">⊞</button></div><label class="terminal-sync"><input type="checkbox" data-action="terminal-sync" ${tab.sync ? 'checked' : ''}><span>同步操作</span></label><div class="terminal-tools"><button data-action="terminal-open-new" data-host="${E(getPane(tab.activePaneId)?.hostId || tab.hostId)}" title="为当前主机新建标签和独立 SSH 会话">新建独立终端</button><button data-action="terminal-copy" title="复制活动终端选区（Ctrl+Shift+C）">复制</button><button data-action="terminal-paste" title="粘贴到活动终端（Ctrl+Shift+V）">粘贴</button><button data-action="terminal-fullscreen" aria-pressed="false" title="终端工作区全屏">全屏</button></div><div class="terminal-workspace-status"><span>${tab.paneIds.length} 个会话</span><span>传输任务按分屏隔离</span></div></div><div class="terminal-panes layout-${tab.layout}" style="--pane-count:${tab.paneIds.length}">${tab.paneIds.map(pid => paneMarkup(getPane(pid), tab)).join('')}</div>`;
+    return `<div class="terminal-session-tabs" role="tablist">${state.tabs.map(t => { const host = getHost(t.hostId); return `<button role="tab" aria-selected="${t.id === state.activeTabId}" data-action="terminal-tab" data-id="${t.id}"><span class="terminal-status terminal-status-${getPane(t.paneIds[0])?.status || 'offline'}"></span><strong>${E(t.title)}</strong><small>${E(host?.ip || '')}</small><span class="terminal-tab-close" data-action="terminal-close-tab" data-id="${t.id}" aria-label="关闭标签">×</span></button>`; }).join('')}</div><div class="terminal-toolbar"><div class="terminal-layouts"><button data-action="terminal-split" data-layout="columns" title="左右分屏" aria-label="左右分屏">◫</button><button data-action="terminal-split" data-layout="rows" title="上下分屏" aria-label="上下分屏">⬒</button><button data-action="terminal-split" data-layout="grid" title="网格分屏" aria-label="网格分屏">⊞</button></div><label class="terminal-sync"><input type="checkbox" data-action="terminal-sync" ${tab.sync ? 'checked' : ''}><span>同步操作</span></label><div class="terminal-tools"><button data-action="terminal-open-new" data-host="${E(getPane(tab.activePaneId)?.hostId || tab.hostId)}" title="为当前主机新建标签和独立 SSH 会话">新建独立终端</button><button data-action="terminal-copy" title="复制活动终端选区（Ctrl+Shift+C）">复制</button><button data-action="terminal-paste" title="粘贴到活动终端（Ctrl+Shift+V）">粘贴</button><button data-action="terminal-transfer" title="大文件分块传输，支持断点续传">文件传输</button><button data-action="terminal-fullscreen" aria-pressed="false" title="终端工作区全屏">全屏</button></div><div class="terminal-workspace-status"><span>${tab.paneIds.length} 个会话</span><span>传输任务按分屏隔离</span></div></div><div class="terminal-panes layout-${tab.layout}" style="--pane-count:${tab.paneIds.length}">${tab.paneIds.map(pid => paneMarkup(getPane(pid), tab)).join('')}</div>`;
   }
   let formAuth = 'password';
   const AUTH_LABELS = { password: '密码', private_key: 'SSH 私钥' };
@@ -1784,6 +2064,11 @@ var AssetDemo = window.AssetDemo = (() => {
     'terminal-paste': pasteClipboard,
     'terminal-fullscreen': toggleFullscreen,
     'terminal-add-asset': assetForm,
+    'terminal-reload-assets': async () => {
+      try { await api.refreshAssets(); A.toast('资产清单已重新载入。'); }
+      catch (error) { A.toast('仍无法载入资产清单：' + (error.message || '未知错误')); }
+      render();
+    },
     'terminal-save-asset': saveAsset,
     'terminal-auth-type': switchAuthType,
     'terminal-toggle-password': togglePassword,
@@ -1830,10 +2115,518 @@ var AssetDemo = window.AssetDemo = (() => {
     });
   }
   api?.onAssets?.(() => render());
+  // 载入失败同样要落到界面上，否则用户只看到一棵空树。
+  api?.onAssetsError?.(() => render());
   A.terminalWorkspace = {
     openHost, runCommand, renderPage,
     snapshot: () => ({ activeTabId: state.activeTabId, tabs: state.tabs.map(t => ({ ...t, paneIds: [...t.paneIds] })), panes: Object.fromEntries(Object.entries(state.panes).map(([id, p]) => [id, { ...p, handle: undefined, terminal: undefined, fitAddon: undefined, resizeObserver: undefined, trzsz: undefined, element: undefined }])) })
   };
+})();
+
+(function () {
+  'use strict';
+  const A = window.AssetDemo;
+  if (!A) return;
+
+  // Matches the server-side MaxChunk exactly: every extra byte over the cap is
+  // a rejected request, and every byte below it is another HTTP round trip plus
+  // another task-state write. 8 MiB halves the round trips of the old 4 MiB.
+  const CHUNK = 8 << 20;
+  const token = () => { try { return window.sessionStorage.getItem('qiyun.admin-token') || ''; } catch { return ''; } };
+  const auth = extra => ({ ...(token() ? { Authorization: 'Bearer ' + token() } : {}), ...(extra || {}) });
+
+  async function api(path, options) {
+    const response = await fetch(path, { ...(options || {}), headers: auth({ 'Content-Type': 'application/json', ...(options?.headers || {}) }) });
+    const body = response.status === 204 ? null : await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = new Error(body?.detail || `HTTP ${response.status}`);
+      error.code = body?.code || 'HTTP_ERROR';
+      error.status = response.status;
+      throw error;
+    }
+    return body;
+  }
+
+  let drawer = null, assets = [], tasks = [], mode = 'upload', busy = false;
+  const progress = new Map();
+  const canceledTasks = new Set();
+
+  function el(html) {
+    const template = document.createElement('template');
+    template.innerHTML = html.trim();
+    return template.content.firstElementChild;
+  }
+
+  function fmtBytes(n) {
+    if (!Number.isFinite(n) || n <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let value = n, unit = 0;
+    while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
+    return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+  }
+
+  function statusLabel(task) {
+    if (progress.has(task.id)) return '传输中';
+    return { pending: '待开始', active: '传输中', paused: '已暂停（可续传）', completed: '已完成', failed: '失败', canceled: '已取消' }[task.status] || task.status;
+  }
+
+  // A rate window rather than a running average: the first seconds of a transfer
+  // include connection setup, and a long window would keep under-reporting a
+  // link that has since sped up.
+  function noteProgress(id, offset, size) {
+    const now = Date.now();
+    const entry = progress.get(id) || { offset: 0, size, samples: [] };
+    entry.offset = offset;
+    entry.size = size;
+    entry.samples = entry.samples || [];
+    entry.samples.push({ t: now, offset });
+    while (entry.samples.length > 2 && now - entry.samples[0].t > 5000) entry.samples.shift();
+    const first = entry.samples[0], last = entry.samples[entry.samples.length - 1];
+    const seconds = (last.t - first.t) / 1000;
+    entry.rate = seconds > 0 ? Math.max(0, (last.offset - first.offset) / seconds) : 0;
+    entry.eta = entry.rate > 0 ? (size - offset) / entry.rate : 0;
+    progress.set(id, entry);
+    return entry;
+  }
+
+  // Saying "还有 3 秒" is the difference between "很慢" and "正常" when the link
+  // itself is the limit, which it usually is: an 80 Mbit/s VPN moves ~9.5 MB/s.
+  function fmtEta(seconds) {
+    if (!Number.isFinite(seconds) || seconds <= 0) return '';
+    if (seconds < 1) return '不到 1 秒';
+    if (seconds < 60) return Math.ceil(seconds) + ' 秒';
+    const m = Math.floor(seconds / 60), s = Math.round(seconds % 60);
+    return m + ' 分 ' + s + ' 秒';
+  }
+
+  function hostOptions(selectedId) {
+    const usable = assets.filter(item => item.host_key_status === 'verified');
+    if (!usable.length) return '<option value="">暂无已核验指纹的主机</option>';
+    return usable.map(item => `<option value="${item.id}" ${item.id === selectedId ? 'selected' : ''}>${(item.name || item.address)} · ${item.address}</option>`).join('');
+  }
+
+  function taskRow(task) {
+    const live = progress.get(task.id);
+    const sent = live?.offset ?? task.offset;
+    const percent = task.size > 0 ? Math.min(100, Math.round((sent / task.size) * 100)) : (task.status === 'completed' ? 100 : 0);
+    const running = !!live;
+    const direction = task.direction === 'upload' ? '上传' : '下载';
+    const detail = task.error ? `<p class="transfer-error">${escapeHtml(task.error)}</p>` : '';
+    // While an upload runs the bytes live in a staging file; without saying so,
+    // checking the remote directory looks like the upload went nowhere.
+    const staging = task.direction === 'upload' && task.status !== 'completed' && task.temp_path
+      ? `<div class="transfer-meta"><span>远端临时文件</span><span class="mono">${escapeHtml(task.temp_path)}</span></div>`
+      : '';
+    const actions = running
+      ? `<button type="button" data-op="cancel" data-id="${task.id}">停止</button>`
+      : `${task.status === 'completed' || task.status === 'failed' ? `<button type="button" data-op="remove" data-id="${task.id}">移除</button>` : ''}${task.status === 'paused' || task.status === 'active' || task.status === 'pending' ? `<button type="button" data-op="cancel" data-id="${task.id}">取消</button>` : ''}${task.direction === 'download' && task.status !== 'completed' ? `<button type="button" data-op="resume-download" data-id="${task.id}">继续下载</button>` : ''}`;
+    const hostLine = task.asset_id ? `<div class="transfer-meta"><span>目标主机</span><span>${escapeHtml(assetLabel(task.asset_id))}</span></div>` : '';
+    return `<li class="transfer-task" data-state="${task.status}">
+      <div class="transfer-task-head"><strong>${direction} ${escapeHtml(task.file_name)}</strong><span>${statusLabel(task)}</span></div>
+      ${hostLine}
+      <div class="transfer-bar" role="progressbar" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><i style="width:${percent}%"></i></div>
+      <div class="transfer-meta"><span>${fmtBytes(sent)} / ${fmtBytes(task.size)} · ${percent}%</span><span class="mono">${escapeHtml(task.remote_path)}</span></div>
+      ${live && live.rate ? `<div class="transfer-meta transfer-rate"><span>${fmtBytes(live.rate)}/s</span><span>${live.eta ? '剩余 ' + fmtEta(live.eta) : ''}</span></div>` : ''}
+      ${staging}
+      ${detail}
+      <div class="transfer-task-actions">${actions}</div>
+    </li>`;
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  }
+
+  function build() {
+    drawer = el(`<aside class="transfer-drawer" hidden aria-label="文件传输">
+      <header><h3>文件传输</h3><button type="button" data-op="close" aria-label="关闭">×</button></header>
+      <div class="transfer-body">
+        <div class="transfer-seg" role="tablist">
+          <button type="button" role="tab" data-op="mode" data-mode="upload" aria-selected="true">上传</button>
+          <button type="button" role="tab" data-op="mode" data-mode="download" aria-selected="false">下载</button>
+        </div>
+        <label class="transfer-field"><span>目标主机</span><select data-field="asset"></select></label>
+        <p class="transfer-target-note" data-target-note></p>
+        <label class="transfer-field"><span>远端路径</span><input data-field="path" placeholder="/tmp/example.bin" spellcheck="false"></label>
+        <div class="transfer-upload-only">
+          <label class="transfer-field"><span>本地文件</span><input type="file" data-field="file"></label>
+          <label class="transfer-check"><input type="checkbox" data-field="overwrite"><span>允许覆盖远端同名文件</span></label>
+        </div>
+        <button type="button" class="transfer-start" data-op="start">开始上传</button>
+        <p class="transfer-hint" data-hint></p>
+        <div class="transfer-list-head"><span>任务</span><button type="button" data-op="refresh">刷新</button></div>
+        <ul class="transfer-list" data-list></ul>
+      </div>
+    </aside>`);
+    document.body.appendChild(drawer);
+    drawer.addEventListener('click', onClick);
+    drawer.addEventListener('change', onChange);
+    syncDrawerPlacement();
+  }
+
+  // A drawer inside <body> is invisible while the terminal stage is fullscreen,
+  // so it follows the current fullscreen element instead of exiting fullscreen.
+  function syncDrawerPlacement() {
+    if (!drawer) return;
+    const host = document.fullscreenElement && document.querySelector('.terminal-stage') === document.fullscreenElement
+      ? document.fullscreenElement
+      : document.body;
+    if (drawer.parentElement !== host) host.appendChild(drawer);
+  }
+  document.addEventListener('fullscreenchange', syncDrawerPlacement);
+
+  function query(selector) { return drawer?.querySelector(selector); }
+
+  // 抽屉以前不认当前终端，默认选中资产列表第一台：在 A 机终端里点“文件传输”，
+  // 实际发往了 B 机，报的却是“主机不可达”，看上去像 SSH 明明通了却不给传。
+  function activeHostId() {
+    const snap = A.terminalWorkspace?.snapshot?.();
+    if (!snap) return '';
+    const tabs = snap.tabs || [];
+    const tab = tabs.find(item => item.id === snap.activeTabId) || tabs[0];
+    if (!tab) return '';
+    const pane = snap.panes?.[tab.activePaneId] || snap.panes?.[tab.paneIds?.[0]];
+    return pane?.hostId || tab.hostId || '';
+  }
+  let pinnedHost = '';
+
+  function assetLabel(id) {
+    const asset = assets.find(item => item.id === id);
+    if (!asset) return id;
+    return (asset.name || asset.address) + ' · ' + asset.address + (asset.ssh_port && asset.ssh_port !== 22 ? ':' + asset.ssh_port : '');
+  }
+
+  function render() {
+    if (!drawer) return;
+    const assetSelect = query('[data-field="asset"]');
+    const keep = pinnedHost || assetSelect.value;
+    assetSelect.innerHTML = hostOptions(keep);
+    const chose = assetSelect.value;
+    const connected = activeHostId();
+    const note = query('[data-target-note]');
+    if (note) {
+      note.textContent = !connected ? ''
+        : chose === connected ? `与终端一致：${assetLabel(connected)}`
+        : `注意：当前终端连接的是 ${assetLabel(connected)}，这里的操作会发往 ${chose ? assetLabel(chose) : '所选主机'}。`;
+      note.dataset.mismatch = String(!!connected && chose !== connected);
+    }
+    query('.transfer-upload-only').hidden = mode !== 'upload';
+    query('[data-op="start"]').textContent = mode === 'upload' ? '开始上传' : '开始下载';
+    drawer.querySelectorAll('[data-op="mode"]').forEach(button => button.setAttribute('aria-selected', String(button.dataset.mode === mode)));
+    query('[data-hint]').textContent = mode === 'upload'
+      ? `分块上传，单块 ${fmtBytes(CHUNK)}，失败自动重试，实时速率与剩余时间见任务行。远端只出现 .part 临时文件，全部完成才改名为目标文件；中断后重新选择同一文件即可续传。速率长时间稳定在同一条水平线上，通常是链路带宽上限，不是程序在丢包。`
+      : '下载使用浏览器流式写盘；不支持流式写入的浏览器会改为浏览器直接下载，且不记录断点。';
+    query('[data-list]').innerHTML = tasks.length
+      ? tasks.map(taskRow).join('')
+      : '<li class="transfer-empty">暂无传输任务</li>';
+  }
+
+  // 任务列表来自服务端，刚建好的任务还没有行。不补进去的话，进度条要等整段
+  // 传输结束才出现，看上去就像点完之后什么都没发生。
+  function trackTask(task) {
+    if (!task || !task.id) return;
+    const index = tasks.findIndex(item => item.id === task.id);
+    if (index >= 0) tasks[index] = { ...tasks[index], ...task };
+    else tasks = [task, ...tasks];
+  }
+
+  async function refreshTasks() {
+    try {
+      const data = await api('/api/v1/transfers');
+      tasks = data.items || [];
+      render();
+    } catch (error) {
+      query('[data-list]') && (query('[data-list]').innerHTML = `<li class="transfer-empty">读取任务失败：${escapeHtml(error.message)}</li>`);
+    }
+  }
+
+  async function open(hostId) {
+    if (!drawer) build();
+    drawer.hidden = false;
+    syncDrawerPlacement();
+    pinnedHost = hostId || activeHostId() || '';
+    try {
+      const data = await api('/api/v1/assets');
+      assets = data.items || [];
+    } catch (error) {
+      A.toast?.('读取资产失败：' + error.message);
+    }
+    render();
+    pinnedHost = '';
+    await refreshTasks();
+  }
+
+  function close() { if (drawer) drawer.hidden = true; }
+
+  A.actions['terminal-transfer'] = () => open(activeHostId());
+  A.transferPanel = { open, close, refresh: refreshTasks };
+
+  function onClick(event) {
+    const button = event.target.closest('[data-op]');
+    if (!button) return;
+    const op = button.dataset.op;
+    if (op === 'close') return close();
+    if (op === 'mode') { mode = button.dataset.mode; return render(); }
+    if (op === 'refresh') return refreshTasks();
+    if (op === 'start') return mode === 'upload' ? startUpload() : startDownload();
+    if (op === 'cancel') return cancelTask(button.dataset.id);
+    if (op === 'remove') return removeTask(button.dataset.id);
+    if (op === 'resume-download') return resumeDownloadById(button.dataset.id);
+  }
+
+  function onChange(event) {
+    if (event.target.dataset.field === 'file' && event.target.files?.[0]) {
+      // Prefill the remote path with the chosen file name so the common case
+      // needs only one edit (the directory).
+      const pathInput = query('[data-field="path"]');
+      if (!pathInput.value.trim()) pathInput.value = '/tmp/' + event.target.files[0].name;
+    }
+  }
+
+  async function cancelTask(id) {
+    try {
+      canceledTasks.add(id);
+      if (activeDownload?.taskId === id) activeDownload.abort = true;
+      await api(`/api/v1/transfers/${id}`, { method: 'DELETE' });
+      progress.delete(id);
+      await refreshTasks();
+    } catch (error) { A.toast?.('取消失败：' + error.message); }
+  }
+
+  async function removeTask(id) {
+    try {
+      await api(`/api/v1/transfers/${id}`, { method: 'DELETE' });
+      await refreshTasks();
+    } catch (error) { A.toast?.('移除失败：' + error.message); }
+  }
+
+  function selectedAsset() {
+    const id = query('[data-field="asset"]').value;
+    if (!id) { A.toast?.('请先选择一台已核验指纹的主机。'); return null; }
+    return id;
+  }
+
+  async function startUpload() {
+    if (busy) return A.toast?.('已有上传正在进行。');
+    const assetId = selectedAsset(); if (!assetId) return;
+    const remotePath = query('[data-field="path"]').value.trim();
+    const file = query('[data-field="file"]').files?.[0];
+    if (!file) return A.toast?.('请选择要上传的本地文件。');
+    if (!remotePath.startsWith('/') || remotePath.endsWith('/') || remotePath.split('/').includes('..')) {
+      return A.toast?.('远端路径必须是绝对的文件路径，且不能包含 ..');
+    }
+    busy = true;
+    query('[data-op="start"]').disabled = true;
+    try {
+      const existing = (await api('/api/v1/transfers?asset_id=' + encodeURIComponent(assetId))).items || [];
+      // 失败的任务同样可以续传：服务端只在 offset 处接续，且会把临时文件回退到
+      // 该偏移。之前把 failed 排除在外，于是提示说「可续传」却只能从头再来。
+      let task = existing.find(item => item.direction === 'upload' && item.remote_path === remotePath && item.size === file.size
+        && !['completed', 'canceled'].includes(item.status));
+      if (!task) {
+        task = await api('/api/v1/transfers', {
+          method: 'POST',
+          body: JSON.stringify({
+            asset_id: assetId, direction: 'upload', remote_path: remotePath,
+            file_name: file.name, size: file.size, overwrite: query('[data-field="overwrite"]').checked,
+          }),
+        });
+      }
+      let offset = task.offset || 0;
+      if (offset > 0 && offset < task.size) {
+        A.toast?.(`从 ${fmtBytes(offset)} 处继续上传。`);
+      }
+      noteProgress(task.id, offset, task.size);
+      trackTask(task);
+      activeTaskId = task.id;
+      const startedAt = Date.now();
+      render();
+      // The next slice is read while the current one is in flight, so the file
+      // read and the request never wait on each other. Ordering is unchanged:
+      // exactly one chunk is outstanding and the server still owns the offset.
+      let pending = offset < task.size ? sliceChunk(file, offset, task.size) : null;
+      while (offset < task.size) {
+        if (canceledTasks.has(task.id)) throw new Error('已取消');
+        const buffer = await pending;
+        const from = offset;
+        const following = Math.min(from + CHUNK, task.size);
+        pending = following < task.size ? sliceChunk(file, following, task.size) : null;
+        const result = await sendChunk(task.id, buffer, from);
+        if (result.resync !== undefined) {
+          // The server confirmed a different offset (e.g. a chunk landed while a
+          // response was lost); trust the server and re-slice from there.
+          offset = result.resync;
+          pending = offset < task.size ? sliceChunk(file, offset, task.size) : null;
+        } else {
+          offset = result.offset;
+        }
+        noteProgress(task.id, offset, task.size);
+        render();
+      }
+      const elapsed = (Date.now() - startedAt) / 1000;
+      // A transfer whose bytes all landed but whose publish failed comes back
+      // with offset == size and never enters the loop above, so ask the server to
+      // publish once more. This call is idempotent for an already-finished task.
+      await api(`/api/v1/transfers/${task.id}/complete`, { method: 'POST' });
+      progress.delete(task.id);
+      await refreshTasks();
+      const avg = elapsed > 0.5 ? ` · 平均 ${fmtBytes(task.size / elapsed)}/s` : '';
+      A.toast?.(`上传完成：${remotePath}${avg}`);
+    } catch (error) {
+      progress.delete(activeTaskId);
+      await refreshTasks().catch(() => {});
+      A.toast?.('上传中断：' + error.message + '（任务已保留：重新选择同一文件再点开始，会从断点继续）');
+    } finally {
+      busy = false;
+      query('[data-op="start"]').disabled = false;
+    }
+  }
+
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+  function sliceChunk(file, offset, total) {
+    return file.slice(offset, Math.min(offset + CHUNK, total)).arrayBuffer();
+  }
+
+  // A single lost chunk should not abort a long upload: the server already
+  // reconnects once, and this retries the request a couple more times before
+  // surfacing the error. Offset mismatches resync instead of failing.
+  async function sendChunk(taskId, buffer, offset) {
+    let lastError = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (canceledTasks.has(taskId)) throw new Error('已取消');
+      try {
+        const response = await fetch(`/api/v1/transfers/${taskId}/chunk?offset=${offset}`, {
+          method: 'PUT',
+          headers: auth({ 'Content-Type': 'application/octet-stream' }),
+          body: buffer,
+        });
+        const body = await response.json().catch(() => null);
+        if (response.ok) return { offset: body.offset };
+        if (response.status === 409 && body?.code === 'OFFSET_MISMATCH') {
+          const fresh = await api(`/api/v1/transfers/${taskId}`);
+          return { resync: fresh.offset };
+        }
+        // 4xx other than a resync will not succeed on retry.
+        if (response.status < 500 && response.status !== 429) throw new Error(body?.detail || `HTTP ${response.status}`);
+        lastError = new Error(body?.detail || `HTTP ${response.status}`);
+      } catch (error) {
+        if (error.status && error.status >= 400 && error.status < 500) throw error;
+        lastError = error;
+      }
+      await sleep(500 * (attempt + 1));
+    }
+    throw lastError || new Error('分块上传失败');
+  }
+
+  let activeTaskId = '';
+  let activeDownload = null;
+
+  async function startDownload() {
+    if (busy) return A.toast?.('已有传输正在进行。');
+    const assetId = selectedAsset(); if (!assetId) return;
+    const remotePath = query('[data-field="path"]').value.trim();
+    if (!remotePath.startsWith('/') || remotePath.endsWith('/')) return A.toast?.('远端路径必须是绝对的文件路径。');
+    busy = true;
+    query('[data-op="start"]').disabled = true;
+    try {
+      const task = await api('/api/v1/transfers', {
+        method: 'POST',
+        body: JSON.stringify({ asset_id: assetId, direction: 'download', remote_path: remotePath }),
+      });
+      await streamDownload(task);
+    } catch (error) {
+      A.toast?.('下载失败：' + error.message);
+      await refreshTasks().catch(() => {});
+    } finally {
+      busy = false;
+      query('[data-op="start"]').disabled = false;
+    }
+  }
+
+  async function resumeDownloadById(id) {
+    if (busy) return A.toast?.('已有传输正在进行。');
+    try {
+      const task = await api(`/api/v1/transfers/${id}`);
+      busy = true;
+      await streamDownload(task);
+    } catch (error) {
+      A.toast?.('继续下载失败：' + error.message);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function streamDownload(task) {
+    activeTaskId = task.id;
+    trackTask(task);
+    const start = task.offset || 0;
+    if (!window.showSaveFilePicker) {
+      // Without the File System Access API a large download cannot be streamed
+      // to disk with a recorded offset, so hand it to the browser directly
+      // instead of buffering it in memory.
+      const url = `/api/v1/transfers/${task.id}/content${token() ? '?access_token=' + encodeURIComponent(token()) : ''}`;
+      const link = document.createElement('a');
+      link.href = url; link.download = task.file_name;
+      document.body.appendChild(link); link.click(); link.remove();
+      A.toast?.('当前浏览器不支持流式写盘，已交给浏览器直接下载；此方式不记录断点。');
+      await refreshTasks();
+      return;
+    }
+    let handle;
+    if (start > 0 && window.showOpenFilePicker) {
+      A.toast?.(`该任务已下载 ${fmtBytes(start)}，请选择同一个本地文件继续写入。`);
+      const picked = await window.showOpenFilePicker({ multiple: false });
+      handle = picked[0];
+      const existing = await handle.getFile();
+      if (existing.size < start) throw new Error('所选文件长度小于已确认断点，无法安全续传');
+    } else {
+      handle = await window.showSaveFilePicker({ suggestedName: task.file_name });
+    }
+    const writable = await handle.createWritable({ keepExistingData: start > 0 });
+    const controller = new AbortController();
+    activeDownload = { taskId: task.id, abort: false };
+    let offset = start;
+    // A download delivers many small buffers per second; re-rendering the whole
+    // task list on every one of them costs more than the write itself.
+    let lastPaint = 0;
+    const paint = force => {
+      const now = Date.now();
+      if (!force && now - lastPaint < 250) return;
+      lastPaint = now;
+      render();
+    };
+    noteProgress(task.id, offset, task.size);
+    paint(true);
+    try {
+      const response = await fetch(`/api/v1/transfers/${task.id}/content`, {
+        headers: auth({ Range: `bytes=${offset}-` }),
+        signal: controller.signal,
+      });
+      if (!response.ok && response.status !== 206) throw new Error(`HTTP ${response.status}`);
+      const reader = response.body.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (activeDownload?.abort) { controller.abort(); throw new Error('已取消'); }
+        await writable.write({ type: 'write', position: offset, data: value });
+        offset += value.byteLength;
+        noteProgress(task.id, offset, task.size);
+        paint(false);
+      }
+      await writable.close();
+      if (offset !== task.size) throw new Error(`下载长度 ${offset} 与远端大小 ${task.size} 不一致`);
+      await api(`/api/v1/transfers/${task.id}/complete`, { method: 'POST' });
+      A.toast?.(`下载完成：${task.file_name}`);
+    } catch (error) {
+      try { await writable.abort(); } catch {}
+      A.toast?.('下载中断：' + error.message + '（任务保留，可续传）');
+    } finally {
+      progress.delete(task.id);
+      activeDownload = null;
+      await refreshTasks().catch(() => {});
+    }
+  }
 })();
 
 (function () {

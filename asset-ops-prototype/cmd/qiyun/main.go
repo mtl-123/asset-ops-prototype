@@ -17,16 +17,20 @@ import (
 	"syscall"
 	"time"
 
+	"qiyun-asset-ops/internal/metrics"
 	"qiyun-asset-ops/internal/secretbox"
 	"qiyun-asset-ops/internal/sshgateway"
 	"qiyun-asset-ops/internal/store"
+	"qiyun-asset-ops/internal/transfer"
 )
 
 type app struct {
-	store   *store.Store
-	ssh     *sshgateway.Manager
-	token   string
-	webRoot string
+	store    *store.Store
+	ssh      *sshgateway.Manager
+	transfer *transfer.Manager
+	metrics  *metrics.Collector
+	token    string
+	webRoot  string
 }
 
 type problem struct {
@@ -41,6 +45,7 @@ func main() {
 	addr := flag.String("addr", env("QIYUN_ADDR", "127.0.0.1:8765"), "HTTP listen address")
 	dataDir := flag.String("data", env("QIYUN_DATA_DIR", "./data"), "persistent data directory")
 	webRoot := flag.String("web", env("QIYUN_WEB_ROOT", "."), "frontend directory")
+	metricsInterval := flag.Duration("metrics-interval", envDuration("QIYUN_METRICS_INTERVAL", 60*time.Second), "SSH host metrics polling interval, 0 disables polling")
 	flag.Parse()
 	token := strings.TrimSpace(os.Getenv("QIYUN_ADMIN_TOKEN"))
 	host, _, err := net.SplitHostPort(*addr)
@@ -72,6 +77,20 @@ func main() {
 		fatal("configure SSH gateway", err)
 	}
 	a := &app{store: st, ssh: gw, token: token, webRoot: *webRoot}
+	tm, err := transfer.New(st, transfer.SFTPFactory(gw), st, transfer.Options{DataDir: *dataDir})
+	if err != nil {
+		fatal("configure transfer manager", err)
+	}
+	a.transfer = tm
+	// Share the SSH gateway so metrics reuse the same host-key verification as
+	// terminals and transfers instead of trusting hosts a second way.
+	mc, err := metrics.New(st, metrics.SSHDialer(gw), metrics.Options{DataDir: *dataDir, Interval: *metricsInterval})
+	if err != nil {
+		fatal("configure metrics collector", err)
+	}
+	a.metrics = mc
+	mc.Start()
+	defer mc.Close()
 	srv := &http.Server{Addr: *addr, Handler: a.routes(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 1 << 20}
 	go func() {
 		slog.Info("qiyun Go service started", "address", "http://"+*addr, "data", *dataDir, "auth_enabled", token != "")
@@ -104,6 +123,8 @@ func (a *app) routes() http.Handler {
 	mux.Handle("PUT /api/v1/assets/{id}/credential", a.auth(http.HandlerFunc(a.updateCredential)))
 	mux.Handle("POST /api/v1/terminal-sessions", a.auth(http.HandlerFunc(a.createTerminalSession)))
 	mux.Handle("GET /api/v1/terminal-sessions/{id}/ws", http.HandlerFunc(a.ssh.ServeWS))
+	transfer.NewHandler(a.transfer).Register(mux, a.auth)
+	metrics.NewHandler(a.metrics).Register(mux, a.auth)
 	files := http.FileServer(http.Dir(a.webRoot))
 	mux.Handle("/", securityHeaders(files))
 	return requestLog(mux)
@@ -394,6 +415,21 @@ func env(k, def string) string {
 	}
 	return def
 }
+func envDuration(k string, def time.Duration) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(k))
+	if raw == "" {
+		return def
+	}
+	if raw == "off" || raw == "0" {
+		return 0
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d < 0 {
+		return def
+	}
+	return d
+}
+
 func splitEnv(k string) []string {
 	raw := strings.TrimSpace(os.Getenv(k))
 	if raw == "" {

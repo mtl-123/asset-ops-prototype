@@ -23,3 +23,7 @@ Some icons were extracted from the reference page's rendered Font Awesome SVGs. 
 ## trzsz.js
 
 `trzsz` 1.1.6 is distributed under the MIT License. The browser bundle is stored at `vendor/trzsz/trzsz.js`; the upstream license is stored at `vendor/trzsz/LICENSE`.
+
+本地补丁：浏览器下载等待 File System Access writer.close() 完成后再确认文件完成，以暴露落盘错误；不提供 Blob 整文件回退。
+
+Linux 用户级工具使用官方 `trzsz/trzsz-go` v1.2.0 发布包（不是 `trzsz-ssh` 的 tssh 客户端），仅支持 x86_64/aarch64。来源：https://github.com/trzsz/trzsz-go/releases/tag/v1.2.0 。安装器固定官方 checksums.txt 中的 SHA-256，服务器按需下载缓存。

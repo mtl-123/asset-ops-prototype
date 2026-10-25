@@ -23,6 +23,7 @@
   state.hosts.forEach(h => { const n = h.ip.split('.').pop(); state.leases[n] = { status: 'used', hostname: h.id, mac: h.mac, owner: h.owner, binding: true, managed: true }; });
   // Host inventory mirrors the Go asset store so a deleted asset disappears here.
   function syncHosts() {
+    const status = window.QiyunAPI?.assetStatus?.() || { loaded: true };
     const remote = (window.QiyunAPI?.getAssets?.() || []).map(a => ({
       source: 'api', id: a.id, name: a.name, os: a.os || 'Linux', type: 'Linux', ip: a.ip,
       owner: [a.owner, a.department].filter(Boolean).join(' · ') || '未指定',
@@ -33,6 +34,8 @@
       fingerprint: a.hostKeyFingerprint || ''
     }));
     const local = state.hosts.filter(h => h.source !== 'api');
+    // 清单未载入（或载入失败）时保留上一次成功的结果，避免主机页瞬间变成 0 台。
+    if (!status.loaded && remote.length === 0 && state.hosts.some(h => h.source === 'api')) { if (D.state.page === 'hosts') D.render(); return; }
     state.hosts.length = 0;
     state.hosts.push(...remote, ...local);
     const usedNow = {};
@@ -40,11 +43,30 @@
     Object.assign(state.leases, usedNow);
     if (D.state.page === 'hosts') D.render();
   }
+  // 指标数据由 host-metrics.js 拉取；这里只做展示与降级。
+  function metricOf(id) { return window.HostMetrics?.get?.(id) || null; }
+  function metricSummary() {
+    return window.HostMetrics?.summary?.() || { total: 0, ok: 0, failed: 0, pending: 0, interval: 0, error: null };
+  }
+  function metricCell(h) {
+    const m = metricOf(h.id);
+    if (m && m.snapshot) {
+      const s = m.snapshot;
+      const stale = m.status === 'error';
+      return `<span class="mono">CPU ${s.cpu_percent}% · 内存 ${s.mem_percent}%</span>`
+        + `<div class="infra-mini-progress"><span style="width:${Math.max(2, Math.min(100, s.mem_percent))}%"></span></div>`
+        + `<small class="muted" style="display:block;margin-top:6px">磁盘 ${s.disk_percent}% · 负载 ${s.load1}</small>`
+        + (stale ? `<small class="infra-error-inline">数据已过期：${esc(m.error || '采集失败')}</small>` : '');
+    }
+    if (m && m.status === 'error') return `<span class="muted">采集失败</span><small class="infra-error-inline">${esc(m.error || '')}</small>`;
+    if (hostAvailable(h)) return '<span class="muted">等待首次采集…</span>';
+    return '<span class="muted">未接入指标采集</span>';
+  }
   state.devices.forEach(d => { const n = d.ip.split('.').pop(); state.leases[n] = { status: 'used', hostname: d.id, mac: d.mac, owner: 'IT 运维', binding: true, managed: true }; });
   [8, 9, 16, 17, 60, 61].forEach(n => { state.leases[n] = { status: 'reserved', hostname: n < 20 ? '基础设施预留' : '新项目预留', mac: '', owner: 'IT 运维', binding: false }; });
   state.leases[45] = { status: 'conflict', hostname: '发现重复地址', mac: '10:FE:ED:21:11:45', owner: '待核查', binding: false };
   const styles = `<style>
-    #asset-app .infra-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px;flex-wrap:wrap}#asset-app .infra-toolbar .row{gap:8px}#asset-app .infra-cell-title{font-weight:650;color:var(--ink)}#asset-app .infra-cell-title+small{display:block;color:#8b9893;margin-top:5px;font-size:11px}#asset-app .infra-mini-progress{width:86px;height:5px;background:#edf2f0;border-radius:6px;margin-top:7px;overflow:hidden}#asset-app .infra-mini-progress span{display:block;height:100%;background:#319981;border-radius:6px}#asset-app .infra-kv{display:grid;grid-template-columns:130px 1fr;gap:15px;font-size:13px;margin:10px 0}#asset-app .infra-kv span:nth-child(odd){color:#819089}#asset-app .infra-kv strong{font-weight:550}#asset-app .infra-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}#asset-app .infra-chip{border:1px solid #e2e9e6;border-radius:6px;padding:7px 9px;font-size:12px;background:var(--canvas)}#asset-app .infra-terminal{background:#142b27;color:#9ad8c6;border-radius:10px;padding:22px;font:12px/1.9 Consolas,monospace;white-space:pre-wrap;min-height:155px}#asset-app .infra-node{padding:20px;border:1px solid #e1e9e5;border-radius:10px;background:#fff}#asset-app .infra-node-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:17px}#asset-app .infra-node-title{font-size:15px;font-weight:650}#asset-app .infra-node-sub{font-size:11px;color:#83958c;margin-top:5px}#asset-app .infra-meter-row{display:flex;justify-content:space-between;font-size:12px;color:#6e8177;margin:13px 0 7px}#asset-app .infra-ip-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin:22px 0}#asset-app .infra-ip{height:55px;border:1px solid #e0e7e4;border-radius:7px;background:var(--canvas);color:#708278;cursor:pointer;font:600 12px inherit;transition:all .12s}#asset-app .infra-ip small{display:block;font-size:9px;font-weight:400;margin-top:4px}#asset-app .infra-ip.used{background:#e7f5ef;border-color:#ceeadf;color:#35876d}#asset-app .infra-ip.reserved{background:#fff6df;border-color:#f5e5b6;color:#ad8841}#asset-app .infra-ip.conflict{background:#fff0ec;border-color:#efc9bf;color:#c46552}#asset-app .infra-ip.selected{outline:2px solid #20876b;outline-offset:2px}#asset-app .infra-legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--sub)}#asset-app .infra-legend span{display:flex;align-items:center;gap:5px}#asset-app .infra-dot{width:7px;height:7px;display:inline-block;border-radius:2px;background:#d7e8df}#asset-app .infra-dot.used{background:#54ab8c}#asset-app .infra-dot.reserved{background:#e4bd60}#asset-app .infra-dot.conflict{background:#de8f7d}#asset-app .infra-chart{width:100%;height:auto;display:block}#asset-app .infra-device-choice{width:100%;border:1px solid #e4ebe7;background:var(--surface);border-radius:8px;margin:0 0 10px;padding:15px;text-align:left;cursor:pointer;color:inherit}#asset-app .infra-device-choice.active{border-color:#68af98;background:#f2faf6}#asset-app .infra-port-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:6px;margin-top:18px}#asset-app .infra-port{border-radius:3px;padding:9px 0;text-align:center;font:10px Consolas,monospace;color:#2f8569;background:#dff0e8;border-bottom:3px solid #8dc9b0}#asset-app .infra-port.down{background:#f0f3f2;color:#99a59f;border-bottom-color:#dfe4e1}#asset-app .infra-port.warn{background:#fff2db;color:#af8b40;border-bottom-color:#e4bf6d}#asset-app .infra-remote-options{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}#asset-app .infra-remote-options>div{padding:16px;border:1px solid #e2e9e5;border-radius:8px}#asset-app .infra-remote-options p{font-size:12px;line-height:1.7;color:#7a8c81;margin:8px 0 13px}#asset-app .infra-ip-layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(270px,1fr);gap:20px}#asset-app .infra-readonly{padding:10px 12px;background:#f3f7f5;border-radius:6px;font:12px Consolas,monospace;color:#49705e}#asset-app .infra-error{color:#c46350;font-size:12px;line-height:1.6;min-height:20px;margin-top:12px}#asset-app .infra-table{width:100%;border-collapse:collapse;font-size:12px}#asset-app .infra-table th{text-align:left;padding:12px 15px;background:var(--canvas);font-size:11px;letter-spacing:.03em;font-weight:500;color:#829287;border-bottom:1px solid #e9eeeb;white-space:nowrap}#asset-app .infra-table td{padding:17px 15px;border-bottom:1px solid #edf1ee;vertical-align:middle}#asset-app .infra-table tbody tr:last-child td{border-bottom:0}#asset-app .infra-table-wrap{overflow:auto}#asset-app .infra-flow-label{font-size:11px;fill:#8b9b91;font-family:inherit}#asset-app .infra-modal-section{margin-top:22px}#asset-app .infra-modal-section h4{font-size:13px;font-weight:600;margin:0 0 10px}#asset-app .infra-subhead{font-size:12px;color:var(--sub);margin:9px 0 20px;line-height:1.6}#asset-app .infra-selected-ip{font-size:25px;letter-spacing:-.03em;font-weight:650;margin:3px 0 10px}#asset-app .infra-snapshot{padding:12px 15px;border-radius:7px;background:var(--soft);color:#7c8e82;font-size:11px;line-height:1.7;margin-top:16px}#asset-app .infra-progress-label{display:flex;justify-content:space-between;margin-bottom:7px;font-size:12px}#asset-app .infra-stat-value{font-size:25px;font-weight:650;letter-spacing:-.03em;color:var(--ink)}#asset-app .infra-session-row{display:flex;justify-content:space-between;border-bottom:1px solid #edf1ee;padding:11px 0;font-size:12px}#asset-app .infra-host-search{border:1px solid #e0e7e3;border-radius:7px;padding:10px 12px;font:inherit;font-size:12px;width:220px}#asset-app .infra-hint{font-size:11px;color:#91a095;margin-top:8px}@media(max-width:980px){#asset-app .infra-ip-layout{grid-template-columns:1fr}#asset-app .infra-port-grid{grid-template-columns:repeat(8,1fr)}}@media(max-width:620px){#asset-app .infra-ip-grid{grid-template-columns:repeat(4,1fr)}#asset-app .infra-remote-options{grid-template-columns:1fr}}
+    #asset-app .infra-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px;flex-wrap:wrap}#asset-app .infra-toolbar .row{gap:8px}#asset-app .infra-cell-title{font-weight:650;color:var(--ink)}#asset-app .infra-cell-title+small{display:block;color:#8b9893;margin-top:5px;font-size:11px}#asset-app .infra-mini-progress{width:86px;height:5px;background:#edf2f0;border-radius:6px;margin-top:7px;overflow:hidden}#asset-app .infra-mini-progress span{display:block;height:100%;background:#319981;border-radius:6px}#asset-app .infra-kv{display:grid;grid-template-columns:130px 1fr;gap:15px;font-size:13px;margin:10px 0}#asset-app .infra-kv span:nth-child(odd){color:#819089}#asset-app .infra-kv strong{font-weight:550}#asset-app .infra-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}#asset-app .infra-chip{border:1px solid #e2e9e6;border-radius:6px;padding:7px 9px;font-size:12px;background:var(--canvas)}#asset-app .infra-terminal{background:#142b27;color:#9ad8c6;border-radius:10px;padding:22px;font:12px/1.9 Consolas,monospace;white-space:pre-wrap;min-height:155px}#asset-app .infra-node{padding:20px;border:1px solid #e1e9e5;border-radius:10px;background:#fff}#asset-app .infra-node-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:17px}#asset-app .infra-node-title{font-size:15px;font-weight:650}#asset-app .infra-node-sub{font-size:11px;color:#83958c;margin-top:5px}#asset-app .infra-meter-row{display:flex;justify-content:space-between;font-size:12px;color:#6e8177;margin:13px 0 7px}#asset-app .infra-ip-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin:22px 0}#asset-app .infra-ip{height:55px;border:1px solid #e0e7e4;border-radius:7px;background:var(--canvas);color:#708278;cursor:pointer;font:600 12px inherit;transition:all .12s}#asset-app .infra-ip small{display:block;font-size:9px;font-weight:400;margin-top:4px}#asset-app .infra-ip.used{background:#e7f5ef;border-color:#ceeadf;color:#35876d}#asset-app .infra-ip.reserved{background:#fff6df;border-color:#f5e5b6;color:#ad8841}#asset-app .infra-ip.conflict{background:#fff0ec;border-color:#efc9bf;color:#c46552}#asset-app .infra-ip.selected{outline:2px solid #20876b;outline-offset:2px}#asset-app .infra-legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--sub)}#asset-app .infra-legend span{display:flex;align-items:center;gap:5px}#asset-app .infra-dot{width:7px;height:7px;display:inline-block;border-radius:2px;background:#d7e8df}#asset-app .infra-dot.used{background:#54ab8c}#asset-app .infra-dot.reserved{background:#e4bd60}#asset-app .infra-dot.conflict{background:#de8f7d}#asset-app .infra-chart{width:100%;height:auto;display:block}#asset-app .infra-device-choice{width:100%;border:1px solid #e4ebe7;background:var(--surface);border-radius:8px;margin:0 0 10px;padding:15px;text-align:left;cursor:pointer;color:inherit}#asset-app .infra-device-choice.active{border-color:#68af98;background:#f2faf6}#asset-app .infra-port-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:6px;margin-top:18px}#asset-app .infra-port{border-radius:3px;padding:9px 0;text-align:center;font:10px Consolas,monospace;color:#2f8569;background:#dff0e8;border-bottom:3px solid #8dc9b0}#asset-app .infra-port.down{background:#f0f3f2;color:#99a59f;border-bottom-color:#dfe4e1}#asset-app .infra-port.warn{background:#fff2db;color:#af8b40;border-bottom-color:#e4bf6d}#asset-app .infra-remote-options{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}#asset-app .infra-remote-options>div{padding:16px;border:1px solid #e2e9e5;border-radius:8px}#asset-app .infra-remote-options p{font-size:12px;line-height:1.7;color:#7a8c81;margin:8px 0 13px}#asset-app .infra-ip-layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(270px,1fr);gap:20px}#asset-app .infra-readonly{padding:10px 12px;background:#f3f7f5;border-radius:6px;font:12px Consolas,monospace;color:#49705e}#asset-app .infra-error{color:#c46350;font-size:12px;line-height:1.6;min-height:20px;margin-top:12px}#asset-app .infra-error-inline{color:#c46350;font-size:11px;display:block;margin-top:6px;line-height:1.5}#asset-app .infra-ms{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}#asset-app .infra-ms>div{padding:14px;border:1px solid #e2e9e5;border-radius:8px;background:var(--canvas)}#asset-app .infra-ms b{display:block;font-size:20px;letter-spacing:-.02em;margin:6px 0}#asset-app .infra-ms small{color:#83958c;font-size:11px}#asset-app .infra-table{width:100%;border-collapse:collapse;font-size:12px}#asset-app .infra-table th{text-align:left;padding:12px 15px;background:var(--canvas);font-size:11px;letter-spacing:.03em;font-weight:500;color:#829287;border-bottom:1px solid #e9eeeb;white-space:nowrap}#asset-app .infra-table td{padding:17px 15px;border-bottom:1px solid #edf1ee;vertical-align:middle}#asset-app .infra-table tbody tr:last-child td{border-bottom:0}#asset-app .infra-table-wrap{overflow:auto}#asset-app .infra-flow-label{font-size:11px;fill:#8b9b91;font-family:inherit}#asset-app .infra-modal-section{margin-top:22px}#asset-app .infra-modal-section h4{font-size:13px;font-weight:600;margin:0 0 10px}#asset-app .infra-subhead{font-size:12px;color:var(--sub);margin:9px 0 20px;line-height:1.6}#asset-app .infra-selected-ip{font-size:25px;letter-spacing:-.03em;font-weight:650;margin:3px 0 10px}#asset-app .infra-snapshot{padding:12px 15px;border-radius:7px;background:var(--soft);color:#7c8e82;font-size:11px;line-height:1.7;margin-top:16px}#asset-app .infra-progress-label{display:flex;justify-content:space-between;margin-bottom:7px;font-size:12px}#asset-app .infra-stat-value{font-size:25px;font-weight:650;letter-spacing:-.03em;color:var(--ink)}#asset-app .infra-session-row{display:flex;justify-content:space-between;border-bottom:1px solid #edf1ee;padding:11px 0;font-size:12px}#asset-app .infra-host-search{border:1px solid #e0e7e3;border-radius:7px;padding:10px 12px;font:inherit;font-size:12px;width:220px}#asset-app .infra-hint{font-size:11px;color:#91a095;margin-top:8px}@media(max-width:980px){#asset-app .infra-ip-layout{grid-template-columns:1fr}#asset-app .infra-port-grid{grid-template-columns:repeat(8,1fr)}}@media(max-width:620px){#asset-app .infra-ip-grid{grid-template-columns:repeat(4,1fr)}#asset-app .infra-remote-options{grid-template-columns:1fr}}
   </style>`;
   const button = (label, action, primary, attrs) => D.button(label, action, primary, attrs || '');
   const tbl = (headers, rows) => `<div class="infra-table-wrap"><table class="infra-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
@@ -76,12 +98,18 @@
     const filtered = state.hosts.filter(h => state.hostFilter === 'all' || h.type === state.hostFilter || (state.hostFilter === 'attention' && h.status !== '在线'));
     const available = state.hosts.filter(hostAvailable).length, attention = state.hosts.filter(h => h.status !== '在线').length;
     const rate = state.hosts.length ? ((available / state.hosts.length) * 100).toFixed(1) + '%' : '—';
-    return styles + `<div class="infra-toolbar"><div class="tabs">${[['all','全部主机'],['Windows','Windows'],['Linux','Linux'],['attention',`需关注 ${attention}`]].map(([v,l]) => `<button class="${state.hostFilter === v ? 'active' : ''}" data-action="infra-host-filter" data-filter="${v}">${l}</button>`).join('')}</div><div class="row">${button('采集接入说明','infra-collector')}${button('刷新资产清单','infra-refresh',true)}</div></div>
-    <div class="grid-4">${D.metric('纳管主机', String(state.hosts.length), 'Windows '+state.hosts.filter(h=>h.type==='Windows').length+' · Linux '+state.hosts.filter(h=>h.type==='Linux').length)}${D.metric('在线率', rate, `${available} 台可达 · ${state.hosts.length - available} 台离线或停止`)}${D.metric('主机指标采集', '未接入', 'CPU / 内存 / 磁盘需安装采集器','amber')}${D.metric('数据来源', 'Go 资产库', '与远程终端共用同一份资产数据')}</div>
+    const ms = metricSummary();
+    const metricTone = ms.total === 0 ? 'amber' : (ms.ok ? 'green' : 'red');
+    const metricValue = ms.total === 0 ? (ms.error ? '采集不可用' : '等待采集') : (ms.ok ? '已接入' : '采集失败');
+    const metricHint = ms.error ? esc(ms.error.message || '无法读取指标接口')
+      : ms.total === 0 ? '首次采样进行中，约 1 分钟内出数'
+      : `${ms.ok} 台正常 · ${ms.failed} 台失败 · 每 ${ms.interval || 60} 秒`;
+    return styles + `<div class="infra-toolbar"><div class="tabs">${[['all','全部主机'],['Windows','Windows'],['Linux','Linux'],['attention',`需关注 ${attention}`]].map(([v,l]) => `<button class="${state.hostFilter === v ? 'active' : ''}" data-action="infra-host-filter" data-filter="${v}">${l}</button>`).join('')}</div><div class="row">${button('＋ 添加主机','infra-add-host',true)}${button('立即采集','infra-collect-all')}${button('采集接入说明','infra-collector')}${button('刷新资产清单','infra-refresh')}</div></div>
+    <div class="grid-4">${D.metric('纳管主机', String(state.hosts.length), 'Windows '+state.hosts.filter(h=>h.type==='Windows').length+' · Linux '+state.hosts.filter(h=>h.type==='Linux').length)}${D.metric('在线率', rate, `${available} 台可达 · ${state.hosts.length - available} 台离线或停止`)}${D.metric('主机指标采集', metricValue, metricHint, metricTone)}${D.metric('数据来源', 'Go 资产库', '与远程终端共用同一份资产数据')}</div>
     ${D.panel('主机与系统清单', tbl(['设备 / 资产编号', '系统 / IP 地址', '领用人与部门', '运行状态', '资源使用', '最后更新', '操作'], filtered.map(h => [
-      `<span class="infra-cell-title">${esc(h.name)}</span><small>${h.asset}</small>`, `<span>${esc(h.os)}</span><small class="muted mono" style="display:block;margin-top:6px">${h.ip}:${h.ports}</small>`, esc(h.owner), `${statusBadge(h.status)}<small class="muted" style="display:block;margin-top:7px">${h.idle}</small>`, hostAvailable(h) && h.cpu != null ? `CPU ${h.cpu}% · 内存 ${h.ram}%<div class="infra-mini-progress"><span style="width:${h.ram}%"></span></div>` : '<span class="muted">未接入指标采集</span>', `<span class="small muted">${h.last}</span>`, `<div class="row" style="gap:6px">${button('详情','infra-host-detail',false,`data-host="${h.id}"`)}${button('远程','infra-remote',false,`data-host="${h.id}"`)}</div>`
+      `<span class="infra-cell-title">${esc(h.name)}</span><small>${h.asset}</small>`, `<span>${esc(h.os)}</span><small class="muted mono" style="display:block;margin-top:6px">${h.ip}:${h.ports}</small>`, esc(h.owner), `${statusBadge(h.status)}<small class="muted" style="display:block;margin-top:7px">${h.idle}</small>`, metricCell(h), `<span class="small muted">${h.last}</span>`, `<div class="row" style="gap:6px">${button('详情','infra-host-detail',false,`data-host="${h.id}"`)}${button('远程','infra-remote',false,`data-host="${h.id}"`)}</div>`
     ])), '<span class="small muted">资产来自 Go 服务资产库 · 删除资产后此处同步移除</span>')}
-    <div class="grid-2" style="margin-top:20px">${D.panel('采集范围', `<div class="infra-chips">${['硬件序列号','操作系统与补丁','安装应用','监听端口','登录活动','CPU / 内存 / 磁盘','网卡 / MAC','资产关联'].map(x => `<span class="infra-chip">${x}</span>`).join('')}</div><div class="infra-snapshot">采集方式：Windows Agent / WinRM · Linux Agent / SSH。应用清单与端口需记录采集时间、来源及权限。</div>`)}${D.panel('待接入能力', `<div class="infra-session-row"><span>主机 CPU / 内存 / 磁盘指标采集</span>${badge('未接入','amber')}</div><div class="infra-session-row"><span>已安装软件与补丁清单</span>${badge('未接入','amber')}</div><div class="infra-session-row"><span>登录活动与端口采集</span>${badge('未接入','amber')}</div><div class="infra-hint">以上能力需要主机侧采集器；未接入时页面不展示推断数据，可在远程终端内实时查看。</div>`)}</div>`;
+    <div class="grid-2" style="margin-top:20px">${D.panel('采集范围', `<div class="infra-chips">${['硬件序列号','操作系统与补丁','安装应用','监听端口','登录活动','CPU / 内存 / 磁盘','网卡 / MAC','资产关联'].map(x => `<span class="infra-chip">${x}</span>`).join('')}</div><div class="infra-snapshot">采集方式：Linux 主机已通过 SSH 只读采样（/proc、df）获取 CPU / 内存 / 磁盘；Windows 需 WinRM 或 Agent，尚未接入。</div>`)}${D.panel('待接入能力', `<div class="infra-session-row"><span>主机 CPU / 内存 / 磁盘指标采集</span>${ms.total ? badge('已接入 · SSH 采样','green') : badge('采集中','amber')}</div><div class="infra-session-row"><span>已安装软件与补丁清单</span>${badge('未接入','amber')}</div><div class="infra-session-row"><span>登录活动与端口采集</span>${badge('未接入','amber')}</div><div class="infra-hint">以上能力需要主机侧采集器；未接入时页面不展示推断数据，可在远程终端内实时查看。</div>`)}</div>`;
   }
   function pve() {
     const nodes = [ ['pve-node-01','10.20.30.10','Dell PowerEdge R750',62,71,68], ['pve-node-02','10.20.30.11','Dell PowerEdge R750',38,54,42], ['pve-node-03','10.20.30.12','HPE ProLiant DL380',21,36,29] ];
@@ -117,9 +145,28 @@
       ['<span class="mono">10.20.30.33</span><small class="muted" style="display:block;margin-top:5px">win-rds-01</small>','RDP · 远程桌面','44 Mbps','106 Mbps','27.0 GB',button('会话明细','infra-flow-detail',false,'data-flow="33"')]
     ]),'<span class="small muted">NetFlow / sFlow 规划 · 示例聚合值</span>')}</div>`;
   }
+  // 详情弹窗里的指标区块：有数据报数据，没数据说清楚原因，不画假曲线。
+  function metricSection(h) {
+    const m = metricOf(h.id);
+    const body = m && m.snapshot
+      ? `<div class="infra-ms"><div><small>CPU 使用率</small><b>${m.snapshot.cpu_percent}%</b><small>${m.snapshot.cores} 核 · 负载 ${m.snapshot.load1} / ${m.snapshot.load5} / ${m.snapshot.load15}</small></div><div><small>内存</small><b>${m.snapshot.mem_percent}%</b><small>${gb(m.snapshot.mem_used_bytes)} / ${gb(m.snapshot.mem_total_bytes)} GB</small></div><div><small>磁盘</small><b>${m.snapshot.disk_percent}%</b><small>${(m.snapshot.disks || []).slice(0, 2).map(d => esc(d.mount) + ' ' + d.used_percent + '%').join(' · ') || '无挂载点数据'}</small></div></div>
+        <div class="infra-kv"><span>主机名</span><strong class="mono">${esc(m.snapshot.hostname || '—')}</strong><span>系统</span><strong>${esc(m.snapshot.os || '—')}</strong><span>内核</span><strong class="mono">${esc(m.snapshot.kernel || '—')}</strong><span>运行时长</span><strong>${uptime(m.snapshot.uptime_seconds)}</strong><span>采集时间</span><strong>${m.collected_at ? new Date(m.collected_at).toLocaleString() : '—'}（耗时 ${m.duration_ms} ms）</strong></div>
+        ${m.status === 'error' ? `<div class="notice">最近一次采集失败：${esc(m.error || '')}。上方为上次成功的数据。</div>` : ''}`
+      : m && m.status === 'error'
+        ? `<div class="notice amber">采集失败：${esc(m.error || '')}</div>`
+        : '<div class="infra-snapshot">尚未采集到指标。点击下方“立即采集”通过 SSH 只读采样一次。</div>';
+    return `<div class="infra-modal-section"><h4>资源指标</h4>${body}<div class="row" style="margin-top:12px">${button('立即采集','infra-collect-metrics',false,`data-host="${h.id}"`)}</div></div>`;
+  }
+  function gb(bytes) { return bytes ? (bytes / 1024 / 1024 / 1024).toFixed(1) : '0'; }
+  function uptime(seconds) {
+    const n = Number(seconds) || 0;
+    if (!n) return '—';
+    const d = Math.floor(n / 86400), hh = Math.floor((n % 86400) / 3600);
+    return d ? `${d} 天 ${hh} 小时` : `${hh} 小时 ${Math.floor((n % 3600) / 60)} 分`;
+  }
   function hostDetail(id) {
     const h=state.hosts.find(x=>x.id===id);if(!h)return;
-    D.modal(esc(h.name),`<div class="row" style="gap:10px">${statusBadge(h.status)}<span class="mono muted small">${h.asset} / ${h.id}</span></div><div class="infra-kv" style="margin-top:22px"><span>操作系统</span><strong>${h.os}</strong><span>IP / MAC</span><strong class="mono">${h.ip} / ${h.mac}</strong><span>责任人</span><strong>${esc(h.owner)}</strong><span>最近采集</span><strong>${h.last}</strong><span>使用状态</span><strong>${h.idle}</strong></div><div class="infra-modal-section"><h4>已安装应用 · ${h.apps.length} 项</h4><div class="infra-chips">${h.apps.map(a=>`<span class="infra-chip">${a}</span>`).join('')}</div></div><div class="infra-modal-section"><h4>监听端口</h4>${tbl(['端口 / 协议','服务','检查结论'],h.ports.split(' / ').map(p=>[p+' / TCP',{'22':'OpenSSH','443':'HTTPS','9100':'Node Exporter','3389':'Remote Desktop','445':'SMB','5986':'WinRM TLS','8007':'Proxmox Backup','8080':'应用测试接口'}[p],badge(['445','8080'].includes(p)?'需复核访问范围':'已登记',['445','8080'].includes(p)?'amber':'green')]))}<div class="infra-hint">端口来自主机监听清单；外部可达性需结合防火墙与网络探测。</div></div>`,button('远程管理','infra-remote',true,`data-host="${h.id}"`));
+    D.modal(esc(h.name),`<div class="row" style="gap:10px">${statusBadge(h.status)}<span class="mono muted small">${h.asset} / ${h.id}</span></div><div class="infra-kv" style="margin-top:22px"><span>操作系统</span><strong>${h.os}</strong><span>IP / MAC</span><strong class="mono">${h.ip} / ${h.mac}</strong><span>责任人</span><strong>${esc(h.owner)}</strong><span>最近采集</span><strong>${h.last}</strong><span>使用状态</span><strong>${h.idle}</strong></div>${metricSection(h)}<div class="infra-modal-section"><h4>已安装应用 · ${h.apps.length} 项</h4><div class="infra-chips">${h.apps.map(a=>`<span class="infra-chip">${a}</span>`).join('')}</div></div><div class="infra-modal-section"><h4>监听端口</h4>${tbl(['端口 / 协议','服务','检查结论'],h.ports.split(' / ').map(p=>[p+' / TCP',({'22':'OpenSSH','443':'HTTPS','9100':'Node Exporter','3389':'Remote Desktop','445':'SMB','5986':'WinRM TLS','8007':'Proxmox Backup','8080':'应用测试接口'}[p] || '未登记服务'),badge(['445','8080'].includes(p)?'需复核访问范围':'已登记',['445','8080'].includes(p)?'amber':'green')]))}<div class="infra-hint">端口来自主机监听清单；外部可达性需结合防火墙与网络探测。</div></div>`,button('远程管理','infra-remote',true,`data-host="${h.id}"`));
   }
   function remote(id) {
     const h=requireRemoteHost(id);if(!h)return;state.activeRemoteHost = h.id;
@@ -152,13 +199,52 @@
   }
   D.infrastructure = { getHosts: () => state.hosts.map(h => ({...h, apps:[...(h.apps||[])]})), syncHosts };
   Object.assign(D.pages,{hosts,pve,ipam,network});
-  syncHosts();
-  window.QiyunAPI?.onAssets?.(syncHosts);
+  // infra.js 在打包顺序里早于 terminal-gateway.js，直接订阅时 window.QiyunAPI 还不存在，
+  // 可选链会把订阅静默吞掉，于是这一页永远是“纳管主机 0”。改成等数据层就绪再绑定。
+  let assetSourceBound = false;
+  function bindAssetSource() {
+    if (assetSourceBound) return;
+    assetSourceBound = true;
+    window.QiyunAPI?.onAssets?.(syncHosts);
+    window.QiyunAPI?.onAssetsError?.(() => { if (D.state.page === 'hosts') D.render(); });
+    syncHosts();
+  }
+  window.HostMetrics?.on?.(() => { if (D.state.page === 'hosts') D.render(); });
+  if (window.QiyunAPI) bindAssetSource();
+  else if (typeof window.addEventListener === 'function') window.addEventListener('qiyun:api-ready', bindAssetSource, { once: true });
   Object.assign(D.actions,{
     'infra-host-filter': b=>{state.hostFilter=b.dataset.filter;D.render();},
     'infra-host-detail':b=>hostDetail(b.dataset.host),
     'infra-remote':b=>remote(b.dataset.host),
-    'infra-refresh':async()=>{try{await window.QiyunAPI?.refreshAssets?.();syncHosts();D.render();D.toast('资产清单已从 Go 服务重新载入。');}catch(error){D.toast('刷新失败：'+error.message);}},
+    'infra-add-host':()=>{
+      // 复用终端页那张真实资产表单（写库 + 指纹核验），但不跳页面。
+      const open=D.actions['terminal-add-asset'];
+      if(typeof open==='function')return open();
+      D.navigate('terminal');
+      setTimeout(()=>D.actions['terminal-add-asset']?.(),120);
+    },
+    'infra-collect-metrics':async b=>{
+      const id=b.dataset.host;
+      if(!window.HostMetrics?.collect)return D.toast('指标采集服务未就绪。');
+      D.toast('正在通过 SSH 采集…');
+      try{const item=await window.HostMetrics.collect(id);
+        D.toast(item.status==='ok'?`已采集：CPU ${item.snapshot.cpu_percent}% · 内存 ${item.snapshot.mem_percent}%`:`采集失败：${item.error||'未知原因'}`);
+        if(D.state.page==='hosts')D.render();
+        const open=typeof b.closest==='function'?b.closest('.modal'):null;
+        if(open)hostDetail(id);
+      }catch(error){D.toast('采集请求失败：'+error.message);}
+    },
+    'infra-collect-all':async()=>{
+      if(!window.HostMetrics?.collect)return D.toast('指标采集服务未就绪。');
+      const targets=state.hosts.filter(h=>h.source==='api');
+      if(!targets.length)return D.toast('没有可采集的服务器。');
+      D.toast(`正在采集 ${targets.length} 台主机…`);
+      const results=await Promise.allSettled(targets.map(h=>window.HostMetrics.collect(h.id)));
+      const ok=results.filter(r=>r.status==='fulfilled'&&r.value.status==='ok').length;
+      D.toast(`采集完成：${ok} 台成功，${results.length-ok} 台失败。`);
+      if(D.state.page==='hosts')D.render();
+    },
+    'infra-refresh':async()=>{try{await window.QiyunAPI?.refreshAssets?.();syncHosts();await window.HostMetrics?.refresh?.();D.render();D.toast('资产与指标已重新载入。');}catch(error){D.toast('刷新失败：'+error.message);}},
     'infra-collector':()=>D.modal('主机采集接入规划',`<div class="notice">真实接入尚未配置，以下为原型中的计划范围。</div>${tbl(['对象','建议方式','能力'],[['Windows','Agent / WinRM HTTPS','软件、补丁、性能、登录记录、端口'],['Linux','Agent / SSH 密钥','系统、包清单、监听端口、资源指标'],['网络设备','SNMP v3 / NETCONF','接口、链路、CPU、配置备份'],['流量','NetFlow / sFlow / IPFIX','IP 会话与聚合带宽']])}<div class="infra-snapshot">采集凭据集中托管、限定网段与命令、记录数据来源与采集时间，结合授权边界部署。</div>`),
     'infra-ssh-command':b=>{if(!requireRemoteHost(state.activeRemoteHost))return;const el=D.root.querySelector('#infra-terminal');if(el)el.textContent=b.dataset.command==='disk'?'[演示输出 · 无真实连接]\n$ df -h\nFilesystem      Size  Used Avail Use% Mounted on\n/dev/sda2       118G   46G   66G  42% /\n/dev/sdb1       493G  164G  304G  36% /data':'[演示输出 · 无真实连接]\n$ uptime\n14:32:00 up 42 days, 5:14, 1 user, load average: 0.34, 0.42, 0.38\n\n此命令样例已记录到本地演示会话。';},
     'infra-rdp':b=>{const h=requireRemoteHost(b.dataset.host);if(!h||h.type!=='Windows')return;const content=`full address:s:${h.ip}:3389\r\nprompt for credentials:i:1\r\nauthentication level:i:2\r\nredirectclipboard:i:0\r\nredirectdrives:i:0\r\n`;const blob=new Blob([content],{type:'application/x-rdp'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`DEMO-${h.id}.rdp`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);D.toast('已下载演示地址的 .rdp 配置；使用前请核实目标地址。');},

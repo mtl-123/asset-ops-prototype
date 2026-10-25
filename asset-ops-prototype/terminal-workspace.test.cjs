@@ -52,7 +52,8 @@ function setup(realToast = false, realDOM = false) {
     badge: value => String(value), table: () => '', panel: (title, body) => title + body, metric: () => '',
     modal() {}, closeModal() {}, render() { renders++; elements.clear(); }, navigate(page) { A.state.page = page; }, toast(message) { toast = message; }
   };
-  const QiyunAPI = { getAssets: () => assets.map(item => ({ ...item })), onAssets() {}, createAsset() {}, scanHostKey() {}, approveHostKey() {}, testAsset() {}, refreshAssets() {} };
+  let assetState = { loaded: true, error: null, retrying: false };
+  const QiyunAPI = { getAssets: () => assets.map(item => ({ ...item })), onAssets() {}, onAssetsError() {}, assetStatus: () => assetState, createAsset() {}, scanHostKey() {}, approveHostKey() {}, testAsset() {}, refreshAssets() {} };
   const LinuxTerminalGateway = {
     connect(options) {
       connections.set(options.sessionId, options);
@@ -111,6 +112,7 @@ function setup(realToast = false, realDOM = false) {
   vm.runInContext(source, context, { filename: 'terminal-workspace.js' });
   if (realDOM) A.render();
   return { A, writes, window, navigator, document: window.document, stage: realDOM ? A.root.querySelector('.terminal-stage') : stage, button, events, elements, terminals, connections, confirmations, toastElement, dialogs, observers, closed, content,
+    setAssetStatus(next) { assetState = next; },
     mount() { A.pages.terminal(); while (timers.length) timers.shift()(); },
     get renders() { return renders; }, get fits() { return fits; }, get toast() { return toast; } };
 }
@@ -483,4 +485,28 @@ test('unverified asset is blocked from terminal actions', () => {
   s.A.actions['terminal-open']({ dataset: { host: 'asset-pending' } });
   assert.match(s.toast, /尚未通过 SSH 指纹核验/);
   assert.equal(s.A.terminalWorkspace.snapshot().tabs.length, 0);
+});
+
+test('资产清单未载入时明确提示失败并给出重试，不伪装成没有主机', () => {
+  const s = setup(false, true);
+  s.setAssetStatus({ loaded: false, error: new Error('Failed to fetch'), retrying: true });
+  s.A.render();
+  const tree = () => s.A.root.querySelector('.terminal-assets');
+  assert.match(tree().textContent, /资产清单载入失败/);
+  assert.match(tree().textContent, /Failed to fetch/);
+  assert.match(tree().textContent, /正在自动重试/);
+  assert.ok(tree().querySelector('[data-action="terminal-reload-assets"]'));
+  assert.ok(!/还没有登记 Linux 主机/.test(tree().textContent));
+  s.setAssetStatus({ loaded: true, error: null, retrying: false });
+  s.A.render();
+  assert.match(tree().textContent, /3 台已登记/);
+});
+
+test('资产清单载入中显示载入中而不是空台账', () => {
+  const s = setup(false, true);
+  s.setAssetStatus({ loaded: false, error: null, retrying: false });
+  s.A.render();
+  const text = s.A.root.querySelector('.terminal-assets').textContent;
+  assert.match(text, /正在载入资产清单/);
+  assert.ok(!/还没有登记 Linux 主机/.test(text));
 });

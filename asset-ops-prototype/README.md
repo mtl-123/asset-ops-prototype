@@ -28,6 +28,12 @@ go run ./cmd/qiyun
 
 ## 添加并连接 Linux 资产
 
+入口有三处，都是同一张表单（写 Go 服务资产库、凭据加密、需核验指纹）：
+
+- 「主机与远程」页右上角 **＋ 添加主机**（就地弹出表单，不跳页）
+- 「资产台账」页 **＋ 登记资产 → 添加 Linux 主机（真实 SSH）**
+- 「远程终端」页 Linux 资产标题右侧的 `+`
+
 1. 打开“远程终端”，点击 Linux 资产标题右侧的 `+`。
 2. 选择认证方式：
    - **密码**：填写 SSH 登录密码，可点击“显示”核对。
@@ -68,6 +74,73 @@ go build -o qiyun.exe ./cmd/qiyun
 浏览器只提交不可猜测的资产 ID 和终端尺寸。服务端重新解析目标地址、凭据和已批准主机公钥；默认仅允许 RFC 1918 私网，未知密钥或密钥变化都会阻断连接。
 
 终端使用本地固定版本的 xterm.js、FitAddon 和 trzsz.js。键盘输入和 PTY 输出使用 WebSocket 二进制帧，支持 Ctrl-C、vim、top 等交互程序；每个分屏都有独立 SSH 会话和 trzsz 过滤器。远端安装 `trzsz` 后，运行 `trz` 可选择或拖放文件/目录上传，运行 `tsz <file>` 可下载。
+
+## 大文件传输（独立于终端）
+
+终端工具栏的「文件传输」打开右侧抽屉，走独立的分块传输通道，不占用交互终端会话：
+
+```text
+浏览器（8 MiB 分块） → Go 传输服务 → SFTP → 远程文件
+```
+
+- **上传**：先写远端临时文件 `<name>.qiyun-<id>.part`（故意不用点开头的隐藏名，方便在远程 `ls` 里看到进度），长度校验通过后才原子改名到目标路径，中断不会留下半截正式文件。
+- **断点续传**：任务记录服务端确认的字节偏移。中断（含失败）后重新选择同一文件、同一路径、同一大小，会从该偏移继续；服务重启会把进行中任务标为「已暂停」，仍可续传。
+- **覆盖已有文件**：目标已存在需显式勾选覆盖。覆盖依赖 `posix-rename@openssh.com` 扩展（OpenSSH 默认提供）实现原子替换；服务端不支持该扩展时退化为「先删后改名」，并会在失败时明确报错而不是静默留在临时文件里。
+- **下载**：支持 HTTP Range，浏览器用 File System Access API 流式写盘并记录断点；不支持流式写盘时退回浏览器直接下载，此时不记录断点。
+- **不依赖远端 trz/tsz**：只需远端开启 SFTP（OpenSSH 默认开启）。
+- **边界**：单块上限 8 MiB、单文件上限 4 TiB、同时最多 4 个任务；内存占用与文件大小无关，但尚未验证 TB 级长时间传输，也未实现服务端校验和比对。
+
+接口：`POST/GET /api/v1/transfers`、`PUT /api/v1/transfers/{id}/chunk?offset=`、`GET /api/v1/transfers/{id}/content`（支持 `Range`）、`POST /api/v1/transfers/{id}/complete`、`DELETE /api/v1/transfers/{id}`。任务元数据存放在 `data/transfers/`，审计写入 `audit_events`。
+
+### 传输慢时先量链路，别改代码
+
+每次上传结束都会打一行账本，把耗时拆成「收浏览器请求体」和「写远端」两段：
+
+```text
+INFO transfer upload completed bytes=78643200 elapsed_ms=10025 mib_per_sec=7.4 chunks=10 body_ms=895 write_ms=8865
+```
+
+`write_ms` 占九成以上是常态——瓶颈在 SSH 链路，不在这段代码。要用同一把尺子量链路本身，跑内置测速工具（不需要登录远端 shell，凭据从 `data/` 解密）：
+
+```bash
+go run ./cmd/xferbench -asset <asset_id> -size 64
+#   A raw ssh (cat > file)          : 裸 SSH 通道（相当于 scp）
+#   B raw ssh (cat > file + sync)   : 同上，含落盘
+#   C sftp concurrent/64/WriteAt    : 本服务当前使用的写法
+#   D sftp concurrent/256/WriteAt   : 加大在途窗口，用来确认窗口不是瓶颈
+#   F N parallel ssh streams        : 多流聚合；不涨说明链路已饱和
+#   G raw ssh download              : 反方向，判断链路是否不对称
+go run ./cmd/xferbench -asset <asset_id> -exec 'sha256sum /tmp/x'   # 顺手跑远端命令
+```
+
+判断方法：**C 与 A 持平** 说明协议层已经没有可挤的水分，只能换链路；**F 的聚合随并行数上涨** 才说明单流被窗口/时延限制，值得做并行分块。实测一条 100 Mbit 级 VPN 上 C 比 A 还略快，此时 75 MiB 用 8.6～10 秒就是该链路的物理下限。
+
+## 主机指标采集（SSH 只读）
+
+「主机与远程」页面的 CPU / 内存 / 磁盘数据不是演示值，来自服务端每 60 秒一次的 SSH 只读采样：
+
+- 采样内容：`/proc/stat`（两次相隔 0.3 秒算 CPU 使用率）、`/proc/meminfo`、`/proc/loadavg`、`/proc/uptime`、`df -P`、`/etc/os-release`、`uname -r`、`nproc`。全部在一个 SSH exec 内完成，避免逐条命令的往返开销。
+- 复用已有的资产凭据与主机指纹校验（与终端、文件传输同一套），不额外信任任何主机。
+- 只对 `host_key_status = verified` 的 Linux 主机采样；未核验资产直接跳过，不产生噪音日志。
+- 失败按指数退避（1×、2×、4× … 最长 8× 间隔）重试，避免对不可达主机每轮都拨号。
+- 历史样本保存在 `data/metrics/<asset_id>.json`，默认留 288 点（1 小时 × 60 秒）。
+
+命令行与接口：
+
+```bash
+# 默认 60 秒；设为 0 或 off 可完全关闭后台采样（仍可用接口手动采集）
+qiyun.exe -addr 127.0.0.1:8765 -metrics-interval 60s
+# 等价环境变量
+QIYUN_METRICS_INTERVAL=30s
+```
+
+- `GET /api/v1/metrics`：所有 Linux 主机的最新状态（`ok` / `error` / `pending`），失败的带原因和下次重试倒计时。
+- `POST /api/v1/metrics/{asset_id}/collect`：立即采样一次（页面上的“立即采集”）。
+- `GET /api/v1/metrics/{asset_id}/history?limit=120`：历史点，用于趋势。
+
+失败语义：请求本身成功但主机采不到，接口返回 `200` + `status: "error"`，页面显示具体原因（如 `dial tcp 192.168.1.190:50022: i/o timeout`），不会伪装成 0%。上次成功的快照会保留并标注“数据已过期”。
+
+**边界**：只覆盖 Linux（依赖 `/proc` 与 `df`）；Windows 需要 WinRM 或 Agent，尚未接入。采集命令需要目标账号能读取 `/proc` 并执行 `df`、`awk`、`sed`；受限 shell（如 rbash）或非 POSIX 默认 shell 会失败并如实报错。
 
 ## 查看日志与诊断
 
@@ -113,7 +186,10 @@ go build -o dbinspect.exe ./tools/dbinspect
 
 ```bash
 go test ./...
-node --test workflow.test.cjs monitoring-model.test.cjs terminal-workspace.test.cjs
+node --test workflow.test.cjs monitoring-model.test.cjs terminal-workspace.test.cjs \
+  terminal-gateway.test.cjs transfer-ui.test.cjs infra-hosts.test.cjs host-metrics.test.cjs
 ```
+
+当前：Go 全量通过，前端 71 项通过。传输相关的回归覆盖了分块顺序（不重不漏）、失败任务续传、覆盖语义（含服务端不支持 `posix-rename` 的退化路径）、以及移除任务后清理远端临时文件。
 
 资产、凭据、主机指纹和 Linux SSH 终端已经接入真实持久化链路。原有采购、盘点、财务、PVE、Windows RDP、监控和通知页面仍保留现有界面与交互，但尚未接入相应外部系统；服务不会把这些页面中的样例快照宣称为真实采集结果。它们需要分别配置 PVE、RDP 网关、SNMP/Agent、OIDC 和企业微信适配器后才能用于生产操作。

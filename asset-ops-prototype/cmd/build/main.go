@@ -14,7 +14,10 @@ func main() {
 	}
 	css := join(base, []string{"styles.css", "platform.css", "monitoring.css", "terminal-workspace.css", "admin-icons.css", "admin-theme.css"})
 	shell := read(filepath.Join(base, "admin-shell.html"))
-	js := join(base, []string{"core.js", "business.js", "infra.js", "terminal-gateway.js", "terminal-workspace.js", "platform.js", "monitoring-model.js", "monitoring.js", "admin-shell.js"})
+	// Data layer first: modules below subscribe to window.QiyunAPI/HostMetrics at
+	// load time, and optional chaining would silently drop the subscription if
+	// they loaded before it existed (that is how "主机与远程" once showed 0 hosts).
+	js := join(base, []string{"core.js", "terminal-gateway.js", "host-metrics.js", "business.js", "infra.js", "terminal-workspace.js", "transfer-ui.js", "platform.js", "monitoring-model.js", "monitoring.js", "admin-shell.js"})
 	fragment := "<style>\n" + css + "\n</style>\n" + shell + "\n<script>\n" + js + "\nAssetDemo.init();\n</script>\n"
 	page := "<!doctype html>\n<html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>栖云 · 资产应用与运维</title><link rel=\"stylesheet\" href=\"/vendor/xterm/xterm.css\"><script src=\"/vendor/xterm/xterm.js\"></script><script src=\"/vendor/xterm/addon-fit.js\"></script><script src=\"/vendor/trzsz/trzsz.js\"></script><style>html,body{margin:0;padding:0}body{background:#f6f8fa}#asset-app{border-radius:0}</style></head><body>\n" + fragment + "\n</body></html>\n"
 	write(filepath.Join(base, "index.html"), page)

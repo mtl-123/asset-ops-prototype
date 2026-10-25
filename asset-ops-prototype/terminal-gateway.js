@@ -35,11 +35,41 @@
       updated_at: a.updated_at || '', created_at: a.created_at || ''
     };
   }
+  // 资产清单的一次性拉取曾经在失败时只写一条 console.warn：界面会把“没拉到”
+  // 当成“台账为空”，用户看到的是资产消失、没有入口，而服务端数据其实完好。
+  let assetsLoaded = false, assetsError = null, retryTimer = 0, retryDelay = 2000, retryToken = 0;
+  const errorListeners = new Set();
+  function scheduleAssetRetry() {
+    const token = ++retryToken;
+    retryTimer = setTimeout(() => {
+      // 令牌变化说明期间已成功载入，这次排队直接作废，避免无谓的重复请求。
+      if (token !== retryToken) return;
+      retryTimer = 0;
+      refreshAssets().catch(() => {});
+    }, retryDelay);
+    retryDelay = Math.min(retryDelay * 2, 30000);
+  }
   async function refreshAssets() {
-    const data = await request('/api/v1/assets'); assets = (data.items || []).map(mapAsset); listeners.forEach(fn => fn(getAssets())); return getAssets();
+    let data;
+    try {
+      data = await request('/api/v1/assets');
+    } catch (error) {
+      assetsError = error;
+      errorListeners.forEach(fn => { try { fn(error); } catch {} });
+      // 只在从未成功载入时自动重试；已有清单时交给用户手动刷新，避免打扰。
+      if (!assetsLoaded) scheduleAssetRetry();
+      throw error;
+    }
+    assets = (data.items || []).map(mapAsset);
+    assetsLoaded = true; assetsError = null; retryDelay = 2000;
+    retryToken++; retryTimer = 0;
+    listeners.forEach(fn => fn(getAssets()));
+    return getAssets();
   }
   function getAssets() { return assets.map(a => ({ ...a })); }
+  function assetStatus() { return { loaded: assetsLoaded, error: assetsError, retrying: !!retryTimer }; }
   function onAssets(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+  function onAssetsError(fn) { errorListeners.add(fn); return () => errorListeners.delete(fn); }
   function websocketURL(path, ticket) {
     const url = new URL(path, location.href); url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     url.searchParams.set('ticket', ticket); return url.href;
@@ -58,7 +88,14 @@
           ws.onmessage = event => {
             if (typeof event.data === 'string') {
               let message; try { message = JSON.parse(event.data); } catch { options.onData?.(event.data); return; }
-              if (message.type === 'ready') { setStatus('connected'); return; }
+              if (message.type === 'transfer_tools') {
+                const text = String(message.message || '').replace(/[\x00-\x1f\x7f\x9b]/g, ' ');
+                options.onData?.(`\r\n[文件传输] ${text}\r\n`); return;
+              }
+              if (message.type === 'ready') {
+                options.onData?.('\r\n[传输限制] 下载要求支持 File System Access API 的浏览器及 HTTPS/localhost；不支持时拒绝下载，不使用整文件 Blob。会话最长 8 小时；未承诺 1000G 稳定性或断点续传。\r\n');
+                setStatus('connected'); return;
+              }
               if (message.type === 'status') { setStatus(message.state); return; }
               if (message.type === 'error') { options.onData?.(`\r\n[${message.code || 'SSH_ERROR'}] ${message.message || '远程连接失败'}\r\n`); queued = []; closed = true; setStatus('error', { code: message.code, message: message.message }); return; }
               if (message.type === 'exit') { options.onData?.(`\r\n远程会话已结束，退出码 ${message.exit_code ?? '未知'}。\r\n`); setStatus('offline'); return; }
@@ -73,9 +110,22 @@
           ws.onclose = () => { queued = []; const wasClosed = closed; closed = true; if (!wasClosed && currentStatus !== 'error') setStatus('offline'); };
         } catch (error) { queued = []; closed = true; options.onData?.(`\r\n[${error.code || 'SSH_CONNECT_FAILED'}] ${error.message}\r\n`); setStatus('error'); }
       })();
-      function send(data) { if (closed) return; if (ws?.readyState === WebSocket.OPEN) ws.send(data); else queued.push(data); }
+      function send(data) {
+        if (closed) return;
+        const size = typeof data === 'string' ? encoder.encode(data).byteLength : data.byteLength;
+        const pending = queued.reduce((n, value) => n + (typeof value === 'string' ? encoder.encode(value).byteLength : value.byteLength), 0);
+        if ((ws?.bufferedAmount || 0) + pending + size > 32 * 1024 * 1024) {
+          closed = true; queued = []; ws?.close(1000, 'send buffer limit');
+          options.onData?.('\r\n[传输中止] 网络发送积压超过 32 MiB，已关闭连接以限制内存；请检查网络后重连。\r\n');
+          setStatus('error'); return;
+        }
+        if (ws?.readyState === WebSocket.OPEN) ws.send(data); else queued.push(data);
+      }
       return {
-        write(data) { send(typeof data === 'string' ? encoder.encode(data) : data); },
+        write(data) {
+          const bytes = typeof data === 'string' ? encoder.encode(data) : data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+          for (let offset = 0; offset < bytes.byteLength; offset += 65536) send(bytes.slice(offset, offset + 65536));
+        },
         resize(cols, rows) { send(JSON.stringify({ type: 'resize', cols, rows })); },
         sendFiles(files) { options.onTransferUnavailable?.(files); },
         close() { closed = true; queued = []; if (ws && ws.readyState < WebSocket.CLOSING) ws.close(1000, 'client close'); }
@@ -84,7 +134,7 @@
   };
   window.LinuxTerminalGateway = gateway;
   window.QiyunAPI = {
-    request, refreshAssets, getAssets, onAssets, mapAsset,
+    request, refreshAssets, getAssets, assetStatus, onAssets, onAssetsError, mapAsset,
     createAsset: body => request('/api/v1/assets', { method: 'POST', body: JSON.stringify(body) }),
     getAsset: id => request('/api/v1/assets/' + encodeURIComponent(id)),
     updateAsset: (id, patch) => request('/api/v1/assets/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify(patch) }),
@@ -96,5 +146,7 @@
     updateCredential: (id, body) => request(`/api/v1/assets/${encodeURIComponent(id)}/credential`, { method: 'PUT', body: JSON.stringify(body) }),
     setToken(value) { if (value) tokenStore.setItem('qiyun.admin-token', value); else tokenStore.removeItem('qiyun.admin-token'); }
   };
-  refreshAssets().catch(error => console.warn('Asset API unavailable:', error.message));
+  // 先宣告数据层就绪，再发起首次拉取：早于本文件执行的模块（如 infra.js）靠这个事件补订阅。
+  if (typeof window.dispatchEvent === 'function' && typeof Event === 'function') window.dispatchEvent(new Event('qiyun:api-ready'));
+  refreshAssets().catch(error => console.warn('Asset API unavailable, retrying:', error.message));
 })();
