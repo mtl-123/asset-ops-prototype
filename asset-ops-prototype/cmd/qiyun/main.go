@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -125,9 +126,38 @@ func (a *app) routes() http.Handler {
 	mux.Handle("GET /api/v1/terminal-sessions/{id}/ws", http.HandlerFunc(a.ssh.ServeWS))
 	transfer.NewHandler(a.transfer).Register(mux, a.auth)
 	metrics.NewHandler(a.metrics).Register(mux, a.auth)
-	files := http.FileServer(http.Dir(a.webRoot))
-	mux.Handle("/", securityHeaders(files))
+	mux.Handle("/", securityHeaders(staticHandler(a.webRoot)))
 	return requestLog(mux)
+}
+
+// staticHandler serves only what the frontend needs. Serving the whole working
+// directory (the default `-web .`) exposed data/master.key, the SQLite database
+// and the Go sources over HTTP; with the master key an attacker can decrypt every
+// stored SSH credential, so the allowlist is deliberately a hard 404 for anything
+// unrecognised instead of a blocklist of known-dangerous names.
+func staticHandler(root string) http.Handler {
+	files := http.FileServer(http.Dir(root))
+	// Subdirectories that are served wholesale.
+	openDirs := map[string]bool{"vendor": true, "assets": true}
+	// Extensions the pages actually load.
+	allowedExt := map[string]bool{
+		".html": true, ".js": true, ".css": true, ".svg": true,
+		".png": true, ".jpg": true, ".jpeg": true, ".ico": true,
+		".woff": true, ".woff2": true,
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested := path.Clean("/" + r.URL.Path)
+		segments := strings.Split(strings.TrimPrefix(requested, "/"), "/")
+		if len(segments) > 1 && !openDirs[segments[0]] {
+			http.NotFound(w, r)
+			return
+		}
+		if requested != "/" && !allowedExt[strings.ToLower(path.Ext(requested))] {
+			http.NotFound(w, r)
+			return
+		}
+		files.ServeHTTP(w, r)
+	})
 }
 
 func (a *app) auth(next http.Handler) http.Handler {

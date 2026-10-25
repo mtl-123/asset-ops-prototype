@@ -24,15 +24,15 @@ func (h *Handler) Register(mux *http.ServeMux, auth func(http.Handler) http.Hand
 // item is the per-host payload the dashboard renders. A host that was never
 // sampled still appears with status "pending" so the row is not silently blank.
 type item struct {
-	AssetID         string    `json:"asset_id"`
-	Status          string    `json:"status"`
-	Error           string    `json:"error,omitempty"`
+	AssetID         string     `json:"asset_id"`
+	Status          string     `json:"status"`
+	Error           string     `json:"error,omitempty"`
 	CollectedAt     *time.Time `json:"collected_at,omitempty"`
-	AgeSeconds      int64     `json:"age_seconds"`
-	DurationMS      int64     `json:"duration_ms"`
-	IntervalSeconds int       `json:"interval_seconds"`
-	RetryInSeconds  int64     `json:"retry_in_seconds,omitempty"`
-	Snapshot        *Snapshot `json:"snapshot,omitempty"`
+	AgeSeconds      int64      `json:"age_seconds"`
+	DurationMS      int64      `json:"duration_ms"`
+	IntervalSeconds int        `json:"interval_seconds"`
+	RetryInSeconds  int64      `json:"retry_in_seconds,omitempty"`
+	Snapshot        *Snapshot  `json:"snapshot,omitempty"`
 }
 
 func (h *Handler) toItem(assetID string) item {

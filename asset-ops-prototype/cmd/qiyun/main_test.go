@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -32,6 +33,54 @@ func testApp(t *testing.T, token string) *app {
 		t.Fatal(err)
 	}
 	return &app{store: st, ssh: gw, token: token, webRoot: dir}
+}
+
+// The static handler must never serve runtime state. Before this allowlist existed,
+// `-web .` made /data/master.key downloadable, which decrypts every credential.
+func TestStaticHandlerHidesRuntimeStateAndSources(t *testing.T) {
+	root := t.TempDir()
+	write := func(name, body string) {
+		full := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("index.html", "<!doctype html><title>ok</title>")
+	write("core.js", "console.log(1)")
+	write("vendor/xterm/xterm.js", "/* lib */")
+	write("assets/admin/avatar.png", "png")
+	write("data/master.key", "c2VjcmV0LW1hc3Rlci1rZXk=")
+	write("data/qiyun.db", "sqlite")
+	write("internal/store/store.go", "package store")
+	write("go.mod", "module x")
+	write("README.md", "# docs")
+	write("qa-evidence/shot.png", "png")
+
+	handler := staticHandler(root)
+	cases := map[string]int{
+		"/":                        http.StatusOK,
+		"/core.js":                 http.StatusOK,
+		"/vendor/xterm/xterm.js":   http.StatusOK,
+		"/assets/admin/avatar.png": http.StatusOK,
+		"/index.html":              http.StatusMovedPermanently, // FileServer canonicalises to "/"
+		"/data/master.key":         http.StatusNotFound,
+		"/data/qiyun.db":           http.StatusNotFound,
+		"/internal/store/store.go": http.StatusNotFound,
+		"/go.mod":                  http.StatusNotFound,
+		"/README.md":               http.StatusNotFound,
+		"/qa-evidence/shot.png":    http.StatusNotFound,
+		"/../data/master.key":      http.StatusNotFound,
+	}
+	for target, want := range cases {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
+		if rec.Code != want {
+			t.Errorf("%s: want %d, got %d", target, want, rec.Code)
+		}
+	}
 }
 
 func TestAPIAuthAndAssetSecretRedaction(t *testing.T) {

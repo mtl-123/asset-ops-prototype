@@ -29,24 +29,24 @@ echo "qiyun:end=1"
 
 // Snapshot is one parsed sample of a Linux host.
 type Snapshot struct {
-	Hostname      string  `json:"hostname"`
-	OS            string  `json:"os"`
-	Kernel        string  `json:"kernel"`
-	Cores         int     `json:"cores"`
-	UptimeSeconds int64   `json:"uptime_seconds"`
-	Load1         float64 `json:"load1"`
-	Load5         float64 `json:"load5"`
-	Load15        float64 `json:"load15"`
-	CPUPercent    float64 `json:"cpu_percent"`
-	MemTotalBytes int64   `json:"mem_total_bytes"`
-	MemUsedBytes  int64   `json:"mem_used_bytes"`
-	MemAvailable  int64   `json:"mem_available_bytes"`
-	MemPercent    float64 `json:"mem_percent"`
-	SwapTotalBytes int64  `json:"swap_total_bytes"`
-	SwapUsedBytes  int64  `json:"swap_used_bytes"`
-	Disks         []Disk  `json:"disks"`
-	DiskPercent   float64 `json:"disk_percent"`
-	CollectedAt   time.Time `json:"collected_at"`
+	Hostname       string    `json:"hostname"`
+	OS             string    `json:"os"`
+	Kernel         string    `json:"kernel"`
+	Cores          int       `json:"cores"`
+	UptimeSeconds  int64     `json:"uptime_seconds"`
+	Load1          float64   `json:"load1"`
+	Load5          float64   `json:"load5"`
+	Load15         float64   `json:"load15"`
+	CPUPercent     float64   `json:"cpu_percent"`
+	MemTotalBytes  int64     `json:"mem_total_bytes"`
+	MemUsedBytes   int64     `json:"mem_used_bytes"`
+	MemAvailable   int64     `json:"mem_available_bytes"`
+	MemPercent     float64   `json:"mem_percent"`
+	SwapTotalBytes int64     `json:"swap_total_bytes"`
+	SwapUsedBytes  int64     `json:"swap_used_bytes"`
+	Disks          []Disk    `json:"disks"`
+	DiskPercent    float64   `json:"disk_percent"`
+	CollectedAt    time.Time `json:"collected_at"`
 }
 
 // Disk is one mounted filesystem. Sizes are bytes; df reports 1 KiB blocks.
