@@ -62,14 +62,8 @@ function setup(realToast = false, realDOM = false) {
       return { write(data) { writes.get(options.sessionId).push(String(data)); }, resize() {}, close() {} };
     }
   };
-  class TrzszFilter {
-    constructor(options) { this.options = options; }
-    processTerminalInput(data) { this.options.sendToServer(data); }
-    processBinaryInput(data) { this.options.sendToServer(data); }
-    processServerOutput(data) { this.options.writeToTerminal(data); }
-    setTerminalColumns() {}
-  }
-  Object.assign(window, { AssetDemo: A, QiyunAPI, LinuxTerminalGateway, TrzszFilter });
+  // trz/tsz 已下线：终端只保留原始 PTY 输入输出，故不再提供 TrzszFilter。
+  Object.assign(window, { AssetDemo: A, QiyunAPI, LinuxTerminalGateway });
   const context = vm.createContext({ window, navigator, requestAnimationFrame: fn => fn(), console, URL, Number, Date, Map, Set, Promise, TextDecoder, TextEncoder, setTimeout: fn => timers.push(fn), clearTimeout, setInterval, clearInterval });
   if (realToast) {
     document.getElementById = () => root;

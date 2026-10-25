@@ -40,20 +40,19 @@ test('发送积压时关闭而不是无限缓存', async () => {
   assert.match(output.join(''), /32 MiB/);
 });
 
-test('安装结果不会作为终端控制序列输出且失败不关闭终端', async () => {
+// 终端不再处理 trz/tsz：未识别的控制消息按普通文本处理，且不影响连接状态。
+test('未知控制消息不会注入控制序列，也不关闭终端', async () => {
   const { socket, output } = await setup();
   socket.onmessage({ data: JSON.stringify({ type: 'transfer_tools', ok: false, message: '失败\x1b[31m，重连重试' }) });
   assert.ok(!output.join('').includes('\x1b'));
-  assert.match(output.join(''), /重连重试/);
   assert.equal(socket.readyState, 1);
 });
 
-test('浏览器库保持分块落盘并等待关闭后确认完成', () => {
-  const source = fs.readFileSync(path.join(__dirname, 'vendor/trzsz/trzsz.js'), 'utf8');
-  assert.match(source, /yield this\.writer\.write\(t\)/);
-  assert.match(source, /yield l\.closeFile\(\),yield this\.recvFileMD5/);
-  assert.match(source, /typeof window\.showDirectoryPicker/);
-  assert.ok(!source.includes('createObjectURL'));
+// trz/tsz 已下线：确认构建产物不再加载该库，避免误以为终端内仍可 trz/tsz。
+test('构建页面不再加载 trzsz 浏览器库', () => {
+  const page = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  assert.ok(!page.includes('/vendor/trzsz/trzsz.js'), 'trzsz 不应再被 index.html 加载');
+  assert.ok(page.includes('/vendor/xterm/xterm.js'), 'xterm 仍需加载');
 });
 
 // 资产清单拉取失败时曾只写 console.warn，界面把「没读到」当成「台账为空」，

@@ -19,14 +19,6 @@ asset-ops-prototype/qa-evidence/
 # Temporary render/check directories.
 diagram-check-*/
 
-# trzsz release artifacts unpacked locally for inspection. The service fetches
-# and caches the matching tarball on demand (internal/sshgateway/transfer_tools.go),
-# so these copies are not part of the source tree.
-asset-ops-prototype/tools/trz
-asset-ops-prototype/tools/trzsz
-asset-ops-prototype/tools/tsz
-asset-ops-prototype/tools/*.tar.gz
-
 # Stale binary backup left behind by a running executable.
 *.exe~
 

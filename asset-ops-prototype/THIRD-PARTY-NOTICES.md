@@ -20,10 +20,8 @@ Some icons were extracted from the reference page's rendered Font Awesome SVGs. 
 
 `@xterm/xterm` 6.0.0 and `@xterm/addon-fit` 0.11.0 are distributed under the MIT License. The browser bundles are stored under `vendor/xterm`; the upstream license is stored at `vendor/xterm/LICENSE`.
 
-## trzsz.js
+## trzsz.js（当前未启用）
 
-`trzsz` 1.1.6 is distributed under the MIT License. The browser bundle is stored at `vendor/trzsz/trzsz.js`; the upstream license is stored at `vendor/trzsz/LICENSE`.
+`trzsz` 1.1.6 is distributed under the MIT License. The browser bundle is kept at `vendor/trzsz/trzsz.js`; the upstream license is at `vendor/trzsz/LICENSE`.
 
-本地补丁：浏览器下载等待 File System Access writer.close() 完成后再确认文件完成，以暴露落盘错误；不提供 Blob 整文件回退。
-
-Linux 用户级工具使用官方 `trzsz/trzsz-go` v1.2.0 发布包（不是 `trzsz-ssh` 的 tssh 客户端），仅支持 x86_64/aarch64。来源：https://github.com/trzsz/trzsz-go/releases/tag/v1.2.0 。安装器固定官方 checksums.txt 中的 SHA-256，服务器按需下载缓存。
+**状态：已下线。** `index.html` 不再加载该库，服务端也已删除向远端安装 `trz`/`tsz` 的安装器；文件传输改由 Go SFTP 分块接口（`internal/transfer`）完成。保留此文件与许可声明仅为后续重新设计时可直接复用，不构成当前运行依赖。

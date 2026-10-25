@@ -1,4 +1,4 @@
-#asset-app .terminal-shell{display:grid;grid-template-columns:250px minmax(0,1fr);height:clamp(620px,calc(100vh - 250px),820px);min-height:620px;border:1px solid var(--line);background:#111916;overflow:hidden}
+﻿#asset-app .terminal-shell{display:grid;grid-template-columns:250px minmax(0,1fr);height:clamp(620px,calc(100vh - 250px),820px);min-height:620px;border:1px solid var(--line);background:#111916;overflow:hidden}
 #asset-app .terminal-assets{display:flex;min-width:0;flex-direction:column;background:var(--surface);border-right:1px solid var(--line);color:var(--ink)}
 #asset-app .terminal-assets-head{display:flex;align-items:center;justify-content:space-between;padding:18px 16px 12px}
 #asset-app .terminal-assets-head strong{display:block;font-size:14px}.terminal-assets-head small{display:block;margin-top:4px;color:var(--sub);font-size:11px}
@@ -56,7 +56,6 @@
 #asset-app .terminal-panes{display:grid;min-height:0;flex:1;gap:1px;background:#32443c}
 #asset-app .terminal-panes.layout-single{grid-template-columns:1fr}.terminal-panes.layout-columns{grid-template-columns:repeat(var(--pane-count),minmax(0,1fr))}.terminal-panes.layout-rows{grid-template-rows:repeat(var(--pane-count),minmax(0,1fr))}.terminal-panes.layout-grid{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:minmax(0,1fr)}
 #asset-app .terminal-pane{position:relative;display:grid;grid-template-rows:34px minmax(0,1fr);background:#000000;min-width:0;min-height:0;outline:1px solid transparent;outline-offset:-1px}
-#asset-app .terminal-pane.active{outline-color:#369b76}.terminal-pane.dragging{outline:2px solid #5bd3a3;outline-offset:-2px}
 #asset-app .terminal-pane header{display:flex;align-items:center;justify-content:space-between;padding:0 10px;background:#202020;border-bottom:1px solid #26372f;font-size:10px}
 #asset-app .terminal-pane header>div{display:flex;align-items:center;gap:7px;min-width:0}.terminal-pane header strong{font-size:10px;color:#dbeae3}.terminal-pane header small{color:#718a80;font:10px ui-monospace,Consolas,monospace}
 #asset-app .terminal-mode{border:1px solid #32463d;border-radius:3px;padding:2px 5px;color:#7d998d}.terminal-pane header button{display:grid;width:20px;height:20px;place-items:center;border:0;background:transparent;color:#8da69b;font-size:15px}.terminal-pane header button:hover{background:#2d3d36;color:#fff}
@@ -64,14 +63,12 @@
 #asset-app .terminal-xterm .xterm{height:100%}
 #asset-app .terminal-xterm .xterm-viewport{background:#000000!important}
 #asset-app .terminal-host-key{display:block;max-width:100%;overflow-wrap:anywhere;font-size:10px}
-#asset-app .terminal-drop{position:absolute;inset:34px 0 0;display:none;place-content:center;text-align:center;background:rgba(13,26,21,.94);z-index:3;color:#b9d8ca;pointer-events:none}.terminal-pane.dragging .terminal-drop{display:grid}.terminal-drop strong{font-size:13px}.terminal-drop span{margin-top:6px;font-size:10px;color:#79988b}
-/* 终端专属黑灰配色；绿色仅用于连接状态与 ANSI。 */
+/* 缁堢涓撳睘榛戠伆閰嶈壊锛涚豢鑹蹭粎鐢ㄤ簬杩炴帴鐘舵€佷笌 ANSI銆?*/
 #asset-app .terminal-shell{background:#181818}
 #asset-app .terminal-stage{color:#d0d0d0}
 #asset-app .terminal-stage .terminal-panes[hidden]{display:none}
 #asset-app .terminal-stage .terminal-panes{background:#383838}
 #asset-app .terminal-stage .terminal-pane.active{outline-color:#888}
-#asset-app .terminal-stage .terminal-pane.dragging{outline-color:#aaa}
 #asset-app .terminal-stage .terminal-pane header{border-color:#383838}
 #asset-app .terminal-stage .terminal-pane header strong,#asset-app .terminal-stage .terminal-empty h2{color:#ddd}
 #asset-app .terminal-stage .terminal-empty,#asset-app .terminal-stage .terminal-empty-icon,#asset-app .terminal-stage small,#asset-app .terminal-stage .terminal-workspace-status,#asset-app .terminal-stage .terminal-mode{color:#999}
@@ -84,8 +81,6 @@
 #asset-app .terminal-stage .terminal-sync input{accent-color:#888}
 #asset-app .terminal-stage .terminal-tab-close:hover,#asset-app .terminal-stage .terminal-pane header button:hover{background:#383838}
 #asset-app .terminal-stage .terminal-pane header button{color:#bbb}
-#asset-app .terminal-stage .terminal-drop{background:rgba(20,20,20,.94);color:#ddd}
-#asset-app .terminal-stage .terminal-drop span{color:#aaa}
 #asset-app .terminal-shell .terminal-host-icon{position:relative;background:#eee;color:#666}
 #asset-app .terminal-shell .terminal-host-icon::after{content:'';position:absolute;right:-2px;bottom:-2px;width:8px;height:8px;border:2px solid var(--surface,#fff);border-radius:50%;background:#777}
 #asset-app .terminal-shell [data-reachability="reachable"] .terminal-host-icon{background:#e0f4e8;color:#187343}
@@ -137,7 +132,7 @@
 @media (max-width:900px){#asset-app .terminal-shell{grid-template-columns:210px minmax(520px,1fr);overflow:auto}.terminal-workspace-status span:last-child{display:none}}
 @media (max-width:640px){#asset-app .terminal-shell{display:block;height:auto;min-height:0;overflow:visible}.terminal-assets{height:270px;border-right:0!important;border-bottom:1px solid var(--line)}.terminal-stage{height:620px}.terminal-panes.layout-columns,.terminal-panes.layout-grid{grid-template-columns:1fr!important;grid-auto-rows:minmax(0,1fr)}.terminal-workspace-status{display:none}.terminal-session-tabs>button{min-width:160px}}
 
-/* 大文件传输抽屉：与终端会话解耦，切换标签或全屏都不影响任务 */
+/* 澶ф枃浠朵紶杈撴娊灞夛細涓庣粓绔細璇濊В鑰︼紝鍒囨崲鏍囩鎴栧叏灞忛兘涓嶅奖鍝嶄换鍔?*/
 .transfer-drawer{position:fixed;top:0;right:0;bottom:0;width:min(400px,100vw);z-index:80;display:flex;flex-direction:column;background:#fff;border-left:1px solid #d7e0da;box-shadow:-12px 0 32px rgba(16,32,24,.14);font-size:13px;color:#1d2a24}
 .transfer-drawer[hidden]{display:none}
 .transfer-drawer>header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #e6ece8}

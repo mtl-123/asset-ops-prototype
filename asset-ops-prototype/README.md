@@ -73,7 +73,9 @@ go build -o qiyun.exe ./cmd/qiyun
 
 浏览器只提交不可猜测的资产 ID 和终端尺寸。服务端重新解析目标地址、凭据和已批准主机公钥；默认仅允许 RFC 1918 私网，未知密钥或密钥变化都会阻断连接。
 
-终端使用本地固定版本的 xterm.js、FitAddon 和 trzsz.js。键盘输入和 PTY 输出使用 WebSocket 二进制帧，支持 Ctrl-C、vim、top 等交互程序；每个分屏都有独立 SSH 会话和 trzsz 过滤器。远端安装 `trzsz` 后，运行 `trz` 可选择或拖放文件/目录上传，运行 `tsz <file>` 可下载。
+终端使用本地固定版本的 xterm.js 与 FitAddon。键盘输入和 PTY 输出使用 WebSocket 二进制帧，支持 Ctrl-C、vim、top 等交互程序；每个分屏都有独立 SSH 会话。
+
+> **终端内的 trz / tsz 已下线。** 之前的实现依赖向远端下载安装 `trzsz` 用户级工具，链路复杂、失败点分散。文件传输统一走下面的 Go SFTP 分块接口；`vendor/trzsz/` 仅保留源码备份，`index.html` 不再加载，等后续重新设计。
 
 ## 大文件传输（独立于终端）
 

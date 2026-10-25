@@ -16,9 +16,7 @@
         return window.LinuxTerminalGateway.connect({
           sessionId: pane.id, hostId: host.id, host,
           onData: data => appendOutput(pane.id, String(data || '')),
-          onServerOutput: data => processServerOutput(pane.id, data),
-          onStatus: (status, detail) => updateStatus(pane.id, status, detail),
-          onTransferUnavailable: () => appendOutput(pane.id, '\r\n[trzsz] 文件传输组件尚未就绪，未发送任何文件。\r\n')
+          onStatus: (status, detail) => updateStatus(pane.id, status, detail)
         });
       } catch (error) {
         appendOutput(pane.id, '\r\n[连接失败] ' + (error?.message || 'SSH 网关不可用'));
@@ -72,17 +70,9 @@
     const pane = {
       id, hostId, status: connected ? 'connecting' : 'offline', transport: 'gateway',
       output: connected ? `栖云 Web Terminal\r\n正在通过资产身份连接 ${host.name} (${host.ip})...\r\n` : `无法连接 ${host.name} (${host.ip})\r\n资产当前状态：${host.status}`,
-      handle: null, terminal: null, fitAddon: null, resizeObserver: null, trzsz: null
+      handle: null, terminal: null, fitAddon: null, resizeObserver: null
     };
     state.panes[id] = pane;
-    if (window.TrzszFilter) {
-      pane.trzsz = new window.TrzszFilter({
-        terminalColumns: 120,
-        isWindowsShell: false,
-        writeToTerminal: data => writeTerminalOutput(id, data),
-        sendToServer: data => pane.handle?.write?.(data)
-      });
-    }
     if (connected) {
       pane.handle = adapter.connect(pane, host);
       if (!pane.handle) {
@@ -118,7 +108,7 @@
     if (!Object.values(state.panes).some(p => p.hostId === pane.hostId && p.status === 'connected')) {
       setHostHealth(pane.hostId, 'unknown', '连通待复查', '终端已主动关闭，不代表设备不通');
     }
-    for (const cleanup of [() => pane.handle?.close?.(), () => pane.resizeObserver?.disconnect?.(), () => pane.terminal?.dispose?.(), () => pane.trzsz?.stopTransferring?.()]) {
+    for (const cleanup of [() => pane.handle?.close?.(), () => pane.resizeObserver?.disconnect?.(), () => pane.terminal?.dispose?.()]) {
       try { cleanup(); } catch {}
     }
     pane.element?.closest('.terminal-pane')?.remove();
@@ -148,11 +138,6 @@
     const text = typeof bytes === 'string' ? bytes : terminalDecoder.decode(bytes, { stream: true });
     pane.output = (pane.output + text).slice(-100000);
     pane.terminal?.write(bytes);
-  }
-  function processServerOutput(id, data) {
-    const pane = getPane(id); if (!pane) return;
-    if (pane.trzsz) pane.trzsz.processServerOutput(data);
-    else writeTerminalOutput(id, data);
   }
   function appendOutput(id, text) {
     const pane = getPane(id); if (!pane) return;
@@ -209,11 +194,11 @@
   }
   function paneMarkup(pane, tab) {
     const host = getHost(pane.hostId), active = tab.activePaneId === pane.id;
-    return `<section class="terminal-pane ${active ? 'active' : ''}" data-pane="${pane.id}" data-action="terminal-focus-pane" data-id="${pane.id}"><header><div><span class="terminal-status terminal-status-${pane.status}"></span><strong>${E(host?.name || pane.hostId)}</strong><small>${E(host?.ip || '')}</small></div><div><span class="terminal-mode">SSH · ${E(host?.hostKeyFingerprint || '指纹待回读')}</span>${tab.paneIds.length > 1 ? `<button data-action="terminal-close-pane" data-id="${pane.id}" aria-label="关闭此分屏" title="关闭此分屏">×</button>` : ''}</div></header><div class="terminal-xterm" data-terminal-xterm="${pane.id}"></div><div class="terminal-drop" data-terminal-drop="${pane.id}"><strong>拖放文件或文件夹到此终端</strong><span>通过当前分屏的 trzsz 会话上传</span></div></section>`;
+    return `<section class="terminal-pane ${active ? 'active' : ''}" data-pane="${pane.id}" data-action="terminal-focus-pane" data-id="${pane.id}"><header><div><span class="terminal-status terminal-status-${pane.status}"></span><strong>${E(host?.name || pane.hostId)}</strong><small>${E(host?.ip || '')}</small></div><div><span class="terminal-mode">SSH · ${E(host?.hostKeyFingerprint || '指纹待回读')}</span>${tab.paneIds.length > 1 ? `<button data-action="terminal-close-pane" data-id="${pane.id}" aria-label="关闭此分屏" title="关闭此分屏">×</button>` : ''}</div></header><div class="terminal-xterm" data-terminal-xterm="${pane.id}"></div></section>`;
   }
   function workspace() {
     const tab = activeTab();
-    if (!tab) return `<div class="terminal-empty"><div class="terminal-empty-icon">›_</div><h2>选择一台 Linux 资产开始连接</h2><p>从左侧资产树点击主机，系统将按资产身份自动建立 SSH 会话。</p><div><span>trz 上传</span><span>tsz 下载</span><span>多标签</span><span>分屏同步</span></div></div>`;
+    if (!tab) return `<div class="terminal-empty"><div class="terminal-empty-icon">›_</div><h2>选择一台 Linux 资产开始连接</h2><p>从左侧资产树点击主机，系统将按资产身份自动建立 SSH 会话。</p><div><span>文件传输面板</span><span>多标签</span><span>分屏同步</span><span>SSH 诊断</span></div></div>`;
     return `<div class="terminal-session-tabs" role="tablist">${state.tabs.map(t => { const host = getHost(t.hostId); return `<button role="tab" aria-selected="${t.id === state.activeTabId}" data-action="terminal-tab" data-id="${t.id}"><span class="terminal-status terminal-status-${getPane(t.paneIds[0])?.status || 'offline'}"></span><strong>${E(t.title)}</strong><small>${E(host?.ip || '')}</small><span class="terminal-tab-close" data-action="terminal-close-tab" data-id="${t.id}" aria-label="关闭标签">×</span></button>`; }).join('')}</div><div class="terminal-toolbar"><div class="terminal-layouts"><button data-action="terminal-split" data-layout="columns" title="左右分屏" aria-label="左右分屏">◫</button><button data-action="terminal-split" data-layout="rows" title="上下分屏" aria-label="上下分屏">⬒</button><button data-action="terminal-split" data-layout="grid" title="网格分屏" aria-label="网格分屏">⊞</button></div><label class="terminal-sync"><input type="checkbox" data-action="terminal-sync" ${tab.sync ? 'checked' : ''}><span>同步操作</span></label><div class="terminal-tools"><button data-action="terminal-open-new" data-host="${E(getPane(tab.activePaneId)?.hostId || tab.hostId)}" title="为当前主机新建标签和独立 SSH 会话">新建独立终端</button><button data-action="terminal-copy" title="复制活动终端选区（Ctrl+Shift+C）">复制</button><button data-action="terminal-paste" title="粘贴到活动终端（Ctrl+Shift+V）">粘贴</button><button data-action="terminal-transfer" title="大文件分块传输，支持断点续传">文件传输</button><button data-action="terminal-fullscreen" aria-pressed="false" title="终端工作区全屏">全屏</button></div><div class="terminal-workspace-status"><span>${tab.paneIds.length} 个会话</span><span>传输任务按分屏隔离</span></div></div><div class="terminal-panes layout-${tab.layout}" style="--pane-count:${tab.paneIds.length}">${tab.paneIds.map(pid => paneMarkup(getPane(pid), tab)).join('')}</div>`;
   }
   let formAuth = 'password';
@@ -453,8 +438,8 @@
     const targets = tab.sync && !pasteDispatch ? tab.paneIds.map(getPane).filter(Boolean) : [source];
     for (const pane of targets) {
       if (pane.status !== 'connected') continue;
-      if (pane.trzsz) binary ? pane.trzsz.processBinaryInput(data) : pane.trzsz.processTerminalInput(data);
-      else pane.handle?.write?.(data);
+      // Raw PTY bytes straight to the shell; file transfer is a separate SFTP API.
+      pane.handle?.write?.(data);
     }
   }
   function fitPane(pane) {
@@ -492,7 +477,7 @@
         const context = clipboardContext();
         if (context) pasteText(context, event.clipboardData?.getData('text/plain') || '');
       }, true);
-      terminal.onResize(size => { pane.trzsz?.setTerminalColumns?.(size.cols); pane.handle?.resize?.(size.cols, size.rows); });
+      terminal.onResize(size => { pane.handle?.resize?.(size.cols, size.rows); });
       requestAnimationFrame(() => { fitPane(pane); if (activeTab() === tab && tab.activePaneId === id && element.isConnected) terminal.focus(); });
       if (window.ResizeObserver) { pane.resizeObserver = new window.ResizeObserver(() => fitPane(pane)); pane.resizeObserver.observe(element); }
       if (!fingerprintReady(host)) terminal.options.disableStdin = true;
@@ -572,7 +557,7 @@
     A.root.querySelectorAll?.('.terminal-pane').forEach(el => el.classList.toggle('active', el.dataset.pane === id));
   }
   A.pages.terminal = page;
-  A.meta.terminal = ['Linux 终端', 'WEB TERMINAL', '以资产为入口，统一管理多主机 SSH 会话与 trzsz 文件传输。'];
+  A.meta.terminal = ['Linux 终端', 'WEB TERMINAL', '以资产为入口，统一管理多主机 SSH 会话；文件传输走 Go SFTP 接口。'];
   const navIndex = A.nav.findIndex(n => n[1] === 'hosts');
   if (navIndex >= 0 && !A.nav.some(n => n[1] === 'terminal')) A.nav.splice(navIndex + 1, 0, ['', 'terminal', 'Linux 终端', 'monitor', '']);
   A.actions['infra-remote'] = button => {
@@ -630,21 +615,12 @@
         if (status && event.target.value.trim()) { const detected = detectPrivateKey(event.target.value); status.textContent = detected.message; status.dataset.state = detected.ok ? 'ok' : 'error'; }
       }
     });
-    A.root.addEventListener('dragover', event => { const drop = event.target.closest?.('[data-terminal-drop]'); if (drop) { event.preventDefault(); drop.closest('.terminal-pane')?.classList.add('dragging'); } });
-    A.root.addEventListener('dragleave', event => { const drop = event.target.closest?.('[data-terminal-drop]'); if (drop) drop.closest('.terminal-pane')?.classList.remove('dragging'); });
-    A.root.addEventListener('drop', async event => {
-      const drop = event.target.closest?.('[data-terminal-drop]'); if (!drop) return;
-      event.preventDefault(); const id = drop.dataset.terminalDrop, pane = getPane(id); drop.closest('.terminal-pane')?.classList.remove('dragging');
-      if (!pane?.trzsz) return A.toast('trzsz 组件未加载，文件未发送。');
-      try { await pane.trzsz.uploadFiles(event.dataTransfer.items); }
-      catch (error) { appendOutput(id, `\r\n[trzsz] 上传失败：${error.message || error}\r\n`); }
-    });
   }
   api?.onAssets?.(() => render());
   // 载入失败同样要落到界面上，否则用户只看到一棵空树。
   api?.onAssetsError?.(() => render());
   A.terminalWorkspace = {
     openHost, runCommand, renderPage,
-    snapshot: () => ({ activeTabId: state.activeTabId, tabs: state.tabs.map(t => ({ ...t, paneIds: [...t.paneIds] })), panes: Object.fromEntries(Object.entries(state.panes).map(([id, p]) => [id, { ...p, handle: undefined, terminal: undefined, fitAddon: undefined, resizeObserver: undefined, trzsz: undefined, element: undefined }])) })
+    snapshot: () => ({ activeTabId: state.activeTabId, tabs: state.tabs.map(t => ({ ...t, paneIds: [...t.paneIds] })), panes: Object.fromEntries(Object.entries(state.panes).map(([id, p]) => [id, { ...p, handle: undefined, terminal: undefined, fitAddon: undefined, resizeObserver: undefined, element: undefined }])) })
   };
 })();

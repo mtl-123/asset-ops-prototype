@@ -88,10 +88,6 @@
           ws.onmessage = event => {
             if (typeof event.data === 'string') {
               let message; try { message = JSON.parse(event.data); } catch { options.onData?.(event.data); return; }
-              if (message.type === 'transfer_tools') {
-                const text = String(message.message || '').replace(/[\x00-\x1f\x7f\x9b]/g, ' ');
-                options.onData?.(`\r\n[文件传输] ${text}\r\n`); return;
-              }
               if (message.type === 'ready') {
                 options.onData?.('\r\n[传输限制] 下载要求支持 File System Access API 的浏览器及 HTTPS/localhost；不支持时拒绝下载，不使用整文件 Blob。会话最长 8 小时；未承诺 1000G 稳定性或断点续传。\r\n');
                 setStatus('connected'); return;
@@ -101,10 +97,7 @@
               if (message.type === 'exit') { options.onData?.(`\r\n远程会话已结束，退出码 ${message.exit_code ?? '未知'}。\r\n`); setStatus('offline'); return; }
               return;
             }
-            if (event.data instanceof ArrayBuffer) {
-              if (options.onServerOutput) options.onServerOutput(event.data);
-              else options.onData?.(decoder.decode(new Uint8Array(event.data), { stream: true }));
-            }
+            if (event.data instanceof ArrayBuffer) options.onData?.(decoder.decode(new Uint8Array(event.data), { stream: true }));
           };
           ws.onerror = () => { queued = []; closed = true; options.onData?.('\r\nSSH WebSocket 连接失败。\r\n'); setStatus('error'); };
           ws.onclose = () => { queued = []; const wasClosed = closed; closed = true; if (!wasClosed && currentStatus !== 'error') setStatus('offline'); };
@@ -127,7 +120,6 @@
           for (let offset = 0; offset < bytes.byteLength; offset += 65536) send(bytes.slice(offset, offset + 65536));
         },
         resize(cols, rows) { send(JSON.stringify({ type: 'resize', cols, rows })); },
-        sendFiles(files) { options.onTransferUnavailable?.(files); },
         close() { closed = true; queued = []; if (ws && ws.readyState < WebSocket.CLOSING) ws.close(1000, 'client close'); }
       };
     }

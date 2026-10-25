@@ -484,14 +484,9 @@ func (m *Manager) ServeWS(w http.ResponseWriter, r *http.Request) {
 		m.failSession(t.SessionID, err)
 		return
 	}
-	// Start the interactive shell immediately. The tool probe used to run before
-	// this point and could block the terminal for up to 75 seconds.
-	err = session.Start("sh -c " + shellQuote(toolPath+"\nexec \"${SHELL:-/bin/sh}\" -i"))
-	if err != nil {
-		// 部分账号禁止 exec 但允许 shell，不能因工具 PATH 包装失去终端。
-		err = session.Shell()
-	}
-	if err != nil {
+	// Plain interactive shell. The old PATH wrapper for the third-party trz/tsz
+	// tools is gone; file transfer goes through the Go SFTP API instead.
+	if err = session.Shell(); err != nil {
 		slog.Warn("terminal shell failed", "session_id", sessionID, "asset_id", t.AssetID, "error", err)
 		m.failSession(t.SessionID, err)
 		return
@@ -502,21 +497,6 @@ func (m *Manager) ServeWS(w http.ResponseWriter, r *http.Request) {
 	var bytesIn, bytesOut atomic.Int64
 	writeMu := sync.Mutex{}
 	done := make(chan error, 3)
-	go func() {
-		// Independent SSH session: the interactive shell stays responsive even
-		// when the remote needs to download and install the transfer tools.
-		prepareCtx, prepareCancel := context.WithTimeout(ctx, 75*time.Second)
-		defer prepareCancel()
-		err := prepareTransferTools(prepareCtx, client)
-		message := "trz/tsz 已就绪（已有命令优先）；trz 上传，tsz 文件名 下载。"
-		if err != nil {
-			message = "文件传输工具准备失败：" + err.Error() + "。终端仍可使用；请检查原因后关闭此终端标签，再点击资产打开终端重试。"
-		}
-		writeMu.Lock()
-		_ = conn.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "transfer_tools", "ok": err == nil, "message": message}))
-		writeMu.Unlock()
-		slog.Info("transfer tools prepared", "session_id", sessionID, "asset_id", t.AssetID, "ok", err == nil)
-	}()
 	go func() {
 		err := session.Wait()
 		_ = outW.Close()

@@ -19,7 +19,10 @@ func main() {
 	// they loaded before it existed (that is how "主机与远程" once showed 0 hosts).
 	js := join(base, []string{"core.js", "terminal-gateway.js", "host-metrics.js", "business.js", "infra.js", "terminal-workspace.js", "transfer-ui.js", "platform.js", "monitoring-model.js", "monitoring.js", "admin-shell.js"})
 	fragment := "<style>\n" + css + "\n</style>\n" + shell + "\n<script>\n" + js + "\nAssetDemo.init();\n</script>\n"
-	page := "<!doctype html>\n<html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>栖云 · 资产应用与运维</title><link rel=\"stylesheet\" href=\"/vendor/xterm/xterm.css\"><script src=\"/vendor/xterm/xterm.js\"></script><script src=\"/vendor/xterm/addon-fit.js\"></script><script src=\"/vendor/trzsz/trzsz.js\"></script><style>html,body{margin:0;padding:0}body{background:#f6f8fa}#asset-app{border-radius:0}</style></head><body>\n" + fragment + "\n</body></html>\n"
+	// trzsz is intentionally not loaded: file transfer now goes through the Go
+	// SFTP chunked API (transfer-ui.js). The vendored bundle stays on disk so the
+	// terminal-based transfer can be re-enabled later without a new download.
+	page := "<!doctype html>\n<html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>栖云 · 资产应用与运维</title><link rel=\"stylesheet\" href=\"/vendor/xterm/xterm.css\"><script src=\"/vendor/xterm/xterm.js\"></script><script src=\"/vendor/xterm/addon-fit.js\"></script><style>html,body{margin:0;padding:0}body{background:#f6f8fa}#asset-app{border-radius:0}</style></head><body>\n" + fragment + "\n</body></html>\n"
 	write(filepath.Join(base, "index.html"), page)
 	if out := strings.TrimSpace(os.Getenv("QIYUN_INLINE_OUTPUT")); out != "" {
 		write(out, strings.Replace(fragment, "class=\"vab-shell\"", "class=\"vab-shell vab-inline\"", 1))

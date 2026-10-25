@@ -36,7 +36,8 @@ go build -o qiyun.exe ./cmd/qiyun
 ## 能力
 
 - **资产增删改查**：`POST/GET/PATCH/DELETE /api/v1/assets`，支持按关键字、部门、环境、指纹状态过滤。
-- **真实 SSH 终端**：WebSocket + PTY 二进制帧，xterm.js 渲染，多标签与横/纵/网格分屏，同步输入，分屏独立 `trzsz` 文件传输。
+- **真实 SSH 终端**：WebSocket + PTY 二进制帧，xterm.js 渲染，多标签与横/纵/网格分屏，同步输入。
+- **大文件传输**：独立于终端的 Go SFTP 分块通道，支持断点续传与覆盖，不依赖远端 `trz`/`tsz`。
 - **主机指纹**：新增资产后扫描、人工核对 SHA-256、批准后固定；改 IP 或端口会自动作废指纹并要求重新核验；密钥变化返回 `HOST_KEY_MISMATCH`。
 - **连接诊断**：凭据读取 → 私钥解析 → 地址解析 → TCP → 主机指纹 → SSH 认证 → 命令执行，逐项给出原因与建议，并显示私钥对应的公钥行便于比对 `authorized_keys`。
 - **凭据安全**：AES-256-GCM 加密存储（AAD 绑定凭据身份），主密钥只落在服务端 `data/master.key`；浏览器只提交资产 ID 与终端尺寸。
