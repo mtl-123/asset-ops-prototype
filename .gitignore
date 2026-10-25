@@ -40,5 +40,8 @@ asset-ops-prototype/tools/*.tar.gz
 .DS_Store
 Thumbs.db
 
+# Node test dependencies (jsdom for the DOM-level frontend tests).
+node_modules/
+
 # Logs.
 *.log

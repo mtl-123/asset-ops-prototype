@@ -1,0 +1,13 @@
+{
+  "name": "qiyun-asset-ops-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "前端回归测试依赖（DOM 级测试使用 jsdom）。服务本身是 Go 程序，构建与运行都不需要 Node。",
+  "scripts": {
+    "build": "go run ./cmd/build",
+    "test": "node --test *.test.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1"
+  }
+}
