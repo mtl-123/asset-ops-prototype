@@ -46,6 +46,56 @@ func doJSON(t *testing.T, method, url string, payload any) (*http.Response, map[
 	return resp, out
 }
 
+func TestHTTPTransferAssetScope(t *testing.T) {
+	fs := newMemFS()
+	m, _ := newTestManager(t, fs, t.TempDir())
+	allow := func(_ *http.Request, assetID string) bool { return assetID == "asset-1" }
+	h := NewHandler(m, allow, allow)
+	mux := http.NewServeMux()
+	h.Register(mux, func(next http.Handler) http.Handler { return next })
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	resp, _ := doJSON(t, http.MethodPost, srv.URL+"/api/v1/transfers", map[string]any{
+		"asset_id": "asset-2", "direction": "upload", "remote_path": "/tmp/blocked.bin", "size": 4,
+	})
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("create outside scope=%d", resp.StatusCode)
+	}
+	resp, created := doJSON(t, http.MethodPost, srv.URL+"/api/v1/transfers", map[string]any{
+		"asset_id": "asset-1", "direction": "upload", "remote_path": "/tmp/allowed.bin", "size": 4,
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create inside scope=%d %v", resp.StatusCode, created)
+	}
+	var list struct {
+		Items []Task `json:"items"`
+		Count int    `json:"count"`
+	}
+	code := getJSONTransfer(t, srv.URL+"/api/v1/transfers", &list)
+	if code != 200 || list.Count != 1 || len(list.Items) != 1 || list.Items[0].AssetID != "asset-1" {
+		t.Fatalf("transfer list scope leaked: %d %+v", code, list)
+	}
+	if code := getJSONTransfer(t, srv.URL+"/api/v1/transfers?asset_id=asset-2", nil); code != 404 {
+		t.Fatalf("list outside scope=%d", code)
+	}
+}
+
+func getJSONTransfer(t *testing.T, url string, out any) int {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer resp.Body.Close()
+	if out != nil {
+		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+	}
+	return resp.StatusCode
+}
+
 func TestHTTPUploadLifecycle(t *testing.T) {
 	fs := newMemFS()
 	srv, _ := newTestServer(t, fs)

@@ -1,0 +1,44 @@
+server = "https://ops.example.com"
+token = "replace-with-data/agent.token"
+interval = 60
+stale_days = 90
+network_interfaces = ["eno1"]   # 空数组 = 自动物理上联；bond 优先
+
+[metrics]
+cpu_detail = true
+context_switch = true
+memory = true
+swap = true
+disk = true
+inode = true
+disk_io = true
+tcp = true
+process = true
+
+[audit]
+enabled = true
+history_limit = 200
+failed_limit = 200
+lastlog = true
+
+[logs]
+enabled = false                 # 生产建议用 Loki/Promtail；true 时按 mode 处理
+mode = "loki"                   # loki | agent
+paths = [
+  "/var/log/auth.log",
+  "/var/log/secure",
+  "/var/log/syslog",
+  "/var/log/messages",
+  "/var/log/dmesg",
+]
+business_paths = [
+  "/var/log/nginx/access.log",
+  "/var/log/nginx/error.log",
+  "/var/log/mysql/slow.log",
+]
+max_bytes_per_cycle = 262144
+loki_url = ""
+
+[dependencies]
+auto_install = true
+auditd = false

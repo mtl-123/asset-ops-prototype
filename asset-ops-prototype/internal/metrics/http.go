@@ -8,12 +8,37 @@ import (
 	"time"
 )
 
+// AssetFilter decides whether the current request may see or collect metrics
+// for an asset. It is supplied by the central authorization layer; tests and
+// single-user mode can omit it.
+type AssetFilter func(*http.Request, string) bool
+
 // Handler exposes the collector over HTTP.
 type Handler struct {
-	c *Collector
+	c             *Collector
+	readFilter    AssetFilter
+	collectFilter AssetFilter
 }
 
-func NewHandler(c *Collector) *Handler { return &Handler{c: c} }
+func NewHandler(c *Collector, filters ...AssetFilter) *Handler {
+	h := &Handler{c: c}
+	if len(filters) > 0 {
+		h.readFilter = filters[0]
+		h.collectFilter = filters[0]
+	}
+	if len(filters) > 1 {
+		h.collectFilter = filters[1]
+	}
+	return h
+}
+
+func (h *Handler) mayRead(r *http.Request, assetID string) bool {
+	return h.readFilter == nil || h.readFilter(r, assetID)
+}
+
+func (h *Handler) mayCollect(r *http.Request, assetID string) bool {
+	return h.collectFilter == nil || h.collectFilter(r, assetID)
+}
 
 func (h *Handler) Register(mux *http.ServeMux, auth func(http.Handler) http.Handler) {
 	mux.Handle("GET /api/v1/metrics", auth(http.HandlerFunc(h.list)))
@@ -74,6 +99,9 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		if a.AssetType != "" && a.AssetType != "linux_host" {
 			continue
 		}
+		if !h.mayRead(r, a.ID) {
+			continue
+		}
 		items = append(items, h.toItem(a.ID))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -101,6 +129,10 @@ func (h *Handler) assetExists(ctx context.Context, id string) (bool, error) {
 // the host did not.
 func (h *Handler) collect(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.mayCollect(r, id) {
+		writeProblem(w, http.StatusNotFound, "ASSET_NOT_FOUND", "资产不存在或无权采集")
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	exists, err := h.assetExists(ctx, id)
@@ -118,6 +150,10 @@ func (h *Handler) collect(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) history(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.mayRead(r, id) {
+		writeProblem(w, http.StatusNotFound, "ASSET_NOT_FOUND", "资产不存在或无权访问")
+		return
+	}
 	limit := 120
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		if n, err := strconv.Atoi(raw); err == nil && n > 0 && n <= 2000 {

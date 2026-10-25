@@ -1,0 +1,14 @@
+[Unit]
+Description=Qiyun Asset Ops Linux inventory agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/qiyun-agent --config /etc/qiyun-agent.toml
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

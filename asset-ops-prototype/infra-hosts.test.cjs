@@ -77,3 +77,43 @@ test('资产清单未载入时保留已有主机，不清零', () => {
     resolve();
   }));
 });
+
+// Windows hosts come from the same Go asset store but are managed over RDP.
+// They must not be displayed as "待核验" (they never get an SSH host key) and
+// they must show the RDP port rather than the unused SSH port.
+test('Windows 资产按 RDP 同步，并保留托管账号与端口', () => {
+  const s = boot();
+  installApi(s.window, [{
+    id: 'win-1', name: 'win-rds-01', ip: '10.20.30.33', type: 'Windows',
+    os: 'Windows Server 2022', status: '待连接', sshPort: 22, rdpPort: 3390,
+    username: 'CORP\\ops', assetCode: 'WIN-1', assetType: 'windows_host',
+    hostKeyStatus: 'pending', hostKeyFingerprint: '', macAddress: 'AA:BB:CC:DD:EE:FF'
+  }]);
+  s.fireReady();
+  const hosts = s.D.infrastructure.getHosts();
+  assert.equal(hosts.length, 1);
+  assert.equal(hosts[0].type, 'Windows');
+  assert.equal(hosts[0].status, '待连接');
+  assert.equal(hosts[0].ports, '3390');
+  assert.equal(hosts[0].rdpPort, 3390);
+  assert.equal(hosts[0].idle, 'RDP · 本机 mstsc');
+  assert.equal(hosts[0].username, 'CORP\\ops');
+});
+
+// 主机页原来只有“详情/远程”，用户添加资产后无法在同一个页面修改或删除。
+test('主机列表提供搜索输入以及编辑、删除动作', () => {
+  const s = boot();
+  installApi(s.window, twoAssets);
+  s.fireReady();
+  const html = s.D.pages.hosts();
+  assert.ok(html.includes('id="infra-host-search"'), '主机页应有搜索框');
+  assert.ok(html.includes('搜索名称、IP、资产编号、责任人'), '搜索框应有明确占位提示');
+  assert.ok(html.includes('infra-host-edit'), '主机行应有编辑按钮');
+  assert.ok(html.includes('infra-host-delete'), '主机行应有删除按钮');
+  const calls = [];
+  s.D.assetEditor = id => calls.push('edit:' + id);
+  s.D.deleteAssetConfirm = (id, name) => calls.push('delete:' + id + ':' + name);
+  s.D.actions['infra-host-edit']({ dataset: { host: 'a1' } });
+  s.D.actions['infra-host-delete']({ dataset: { host: 'a1' } });
+  assert.deepEqual(calls, ['edit:a1', 'delete:a1:生产主机']);
+});

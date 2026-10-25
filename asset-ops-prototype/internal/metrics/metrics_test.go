@@ -356,6 +356,36 @@ func TestHTTPCollectReportsRemoteFailureAsHostError(t *testing.T) {
 	}
 }
 
+func TestHTTPMetricsAssetScope(t *testing.T) {
+	c := newTestCollector(t, []store.Asset{verified("a1"), verified("a2")}, &fakeDialer{}, nil)
+	allowA1 := func(_ *http.Request, assetID string) bool { return assetID == "a1" }
+	mux := http.NewServeMux()
+	NewHandler(c, allowA1, allowA1).Register(mux, func(next http.Handler) http.Handler { return next })
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	var body struct {
+		Items []item `json:"items"`
+	}
+	if code := getJSON(t, srv.URL+"/api/v1/metrics", &body); code != 200 {
+		t.Fatalf("list status=%d", code)
+	}
+	if len(body.Items) != 1 || body.Items[0].AssetID != "a1" {
+		t.Fatalf("scope leaked assets: %+v", body)
+	}
+	if code := getJSON(t, srv.URL+"/api/v1/metrics/a2/history", nil); code != 404 {
+		t.Fatalf("history outside scope=%d", code)
+	}
+	resp, err := http.Post(srv.URL+"/api/v1/metrics/a2/collect", "application/json", nil)
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 404 {
+		t.Fatalf("collect outside scope=%d", resp.StatusCode)
+	}
+}
+
 func TestHTTPUnknownAssetIs404(t *testing.T) {
 	c := newTestCollector(t, nil, &fakeDialer{}, nil)
 	srv := serve(t, c)

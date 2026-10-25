@@ -10,11 +10,52 @@ import (
 	"strings"
 )
 
+// AssetFilter decides whether the current request may read or operate on a
+// transfer for an asset. It is supplied by the central authorization layer.
+type AssetFilter func(*http.Request, string) bool
+
 type Handler struct {
-	m *Manager
+	m     *Manager
+	read  AssetFilter
+	write AssetFilter
 }
 
-func NewHandler(m *Manager) *Handler { return &Handler{m: m} }
+func NewHandler(m *Manager, filters ...AssetFilter) *Handler {
+	h := &Handler{m: m}
+	if len(filters) > 0 {
+		h.read = filters[0]
+		h.write = filters[0]
+	}
+	if len(filters) > 1 {
+		h.write = filters[1]
+	}
+	return h
+}
+
+func (h *Handler) mayRead(r *http.Request, assetID string) bool {
+	return h.read == nil || h.read(r, assetID)
+}
+
+func (h *Handler) mayWrite(r *http.Request, assetID string) bool {
+	return h.write == nil || h.write(r, assetID)
+}
+
+func (h *Handler) taskFor(w http.ResponseWriter, r *http.Request, write bool) (Task, bool) {
+	task, err := h.m.Get(r.PathValue("id"))
+	if err != nil {
+		fail(w, err)
+		return Task{}, false
+	}
+	allowed := h.mayRead(r, task.AssetID)
+	if write {
+		allowed = h.mayWrite(r, task.AssetID)
+	}
+	if !allowed {
+		writeProblem(w, http.StatusNotFound, "TRANSFER_NOT_FOUND", "传输任务不存在或无权访问")
+		return Task{}, false
+	}
+	return task, true
+}
 
 func (h *Handler) Register(mux *http.ServeMux, auth func(http.Handler) http.Handler) {
 	mux.Handle("GET /api/v1/transfers", auth(http.HandlerFunc(h.list)))
@@ -28,8 +69,19 @@ func (h *Handler) Register(mux *http.ServeMux, auth func(http.Handler) http.Hand
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
-	items := h.m.List(r.URL.Query().Get("asset_id"))
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items)})
+	assetID := r.URL.Query().Get("asset_id")
+	if assetID != "" && !h.mayRead(r, assetID) {
+		writeProblem(w, http.StatusNotFound, "ASSET_NOT_FOUND", "资产不存在或无权访问")
+		return
+	}
+	items := h.m.List(assetID)
+	filtered := make([]Task, 0, len(items))
+	for _, task := range items {
+		if h.mayRead(r, task.AssetID) {
+			filtered = append(filtered, task)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": filtered, "count": len(filtered)})
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -44,6 +96,10 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body, 64<<10) {
 		return
 	}
+	if !h.mayWrite(r, body.AssetID) {
+		writeProblem(w, http.StatusNotFound, "ASSET_NOT_FOUND", "资产不存在或无权传输")
+		return
+	}
 	task, err := h.m.Create(r.Context(), CreateRequest{
 		AssetID: body.AssetID, Direction: body.Direction, RemotePath: body.RemotePath,
 		FileName: body.FileName, Size: body.Size, Overwrite: body.Overwrite,
@@ -56,9 +112,8 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
-	task, err := h.m.Get(r.PathValue("id"))
-	if err != nil {
-		fail(w, err)
+	task, ok := h.taskFor(w, r, false)
+	if !ok {
 		return
 	}
 	writeJSON(w, http.StatusOK, task)
@@ -80,6 +135,9 @@ func (h *Handler) chunk(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusRequestEntityTooLarge, "CHUNK_TOO_LARGE", fmt.Sprintf("单个分块不能超过 %d 字节", MaxChunk))
 		return
 	}
+	if _, ok := h.taskFor(w, r, true); !ok {
+		return
+	}
 	body := http.MaxBytesReader(w, r.Body, MaxChunk)
 	task, err := h.m.WriteChunk(r.Context(), r.PathValue("id"), offset, body, r.ContentLength)
 	if err != nil {
@@ -90,6 +148,9 @@ func (h *Handler) chunk(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) complete(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.taskFor(w, r, true); !ok {
+		return
+	}
 	task, err := h.m.Complete(r.Context(), r.PathValue("id"))
 	if err != nil {
 		fail(w, err)
@@ -100,9 +161,8 @@ func (h *Handler) complete(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) remove(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	task, err := h.m.Get(id)
-	if err != nil {
-		fail(w, err)
+	task, ok := h.taskFor(w, r, true)
+	if !ok {
 		return
 	}
 	if task.Status == StatusCompleted || task.Status == StatusCanceled || task.Status == StatusFailed {
@@ -124,9 +184,8 @@ func (h *Handler) remove(w http.ResponseWriter, r *http.Request) {
 // download resumable: the client re-requests from its last confirmed offset.
 func (h *Handler) content(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	task, err := h.m.Get(id)
-	if err != nil {
-		fail(w, err)
+	task, ok := h.taskFor(w, r, true)
+	if !ok {
 		return
 	}
 	if task.Direction != DirectionDownload {

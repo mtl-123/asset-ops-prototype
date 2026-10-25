@@ -13,6 +13,7 @@ var AssetDemo = window.AssetDemo = (() => {
     ['', 'monitoring','监控中心','activity',''],
     ['', 'alerts','告警与事件','bell-ring','3'],
     ['基础设施','hosts','主机与远程','monitor',''],
+    ['', 'agents','Agent 采集','server',''],
     ['', 'pve','PVE 虚拟化','layers',''],
     ['', 'ipam','IP 地址管理','network',''],
     ['', 'network','网络与流量','activity',''],
@@ -28,6 +29,7 @@ var AssetDemo = window.AssetDemo = (() => {
     inventory:['盘点管理','STOCKTAKE','季度检查，年度核实，让账面与实物保持一致。'],
     finance:['财务对账','RECONCILIATION','从汇总金额穿透到原始单据、明细行与资产流水。'],
     hosts:['主机与远程','HOST MANAGEMENT','Windows 与 Linux 统一可见，运维访问全程可追溯。'],
+    agents:['Agent 采集','INFRASTRUCTURE AGENTS','PVE、Docker、Kubernetes 与宿主机资源，由 Linux Agent 主动上报。'],
     pve:['PVE 虚拟化','VIRTUALIZATION','从模板到交付，统一管理计算资源与 Cloud-Init 配置。'],
     ipam:['IP 地址管理','IP ADDRESS MANAGEMENT','看清地址占用、MAC 绑定与分配依据。'],
     network:['网络与流量','NETWORK OBSERVABILITY','交换机、路由器、接口与流量，一处掌握。'],
@@ -50,14 +52,15 @@ var AssetDemo = window.AssetDemo = (() => {
     if (!api?.getAsset) return toast('资产服务未就绪。');
     api.getAsset(apiId).then(raw => {
       const a = api.mapAsset(raw);
+      const windows = a.type === 'Windows';
       const field = (id, label, value, extra = '') => `<div class="field"><label for="${id}">${label}</label><input id="${id}" value="${escape(value ?? '')}" ${extra}></div>`;
-      modal(`编辑资产 · ${escape(a.name)}`, `<div class="notice amber">修改地址或 SSH 端口会让已批准的主机指纹失效，需要重新扫描并核验；只改名称、部门等信息不影响现有连接。</div>
+      modal(`编辑资产 · ${escape(a.name)}`, `<div class="notice amber">修改地址或 ${windows ? 'RDP' : 'SSH'} 端口会让已批准的${windows ? '连接参数' : '主机指纹'}失效，需要重新核验；只改名称、部门等信息不影响现有连接。操作系统类型在创建时确定，不能在这里切换。</div>
         <div class="form-grid" style="margin-top:16px">
           ${field('ae-code', '资产编码（不可修改）', a.assetCode, 'disabled')}
           ${field('ae-name', '资产名称 *', a.name, 'maxlength="80"')}
           ${field('ae-address', 'IP 或主机名 *', a.ip, 'maxlength="255"')}
-          ${field('ae-port', 'SSH 端口 *', a.sshPort, 'type="number" min="1" max="65535"')}
-          ${field('ae-os', '操作系统', a.os, 'maxlength="80"')}
+          ${field('ae-port', windows ? 'RDP 端口 *' : 'SSH 端口 *', windows ? a.rdpPort : a.sshPort, 'type="number" min="1" max="65535"')}
+          ${field('ae-os', '操作系统', a.os, 'disabled')}
           ${field('ae-owner', '负责人', a.owner === '未指定' ? '' : a.owner, 'maxlength="60"')}
           ${field('ae-dept', '部门', a.department === '未分部门' ? '' : a.department, 'maxlength="60"')}
           <div class="field"><label for="ae-env">环境</label><select id="ae-env">${[['production', '生产环境'], ['staging', '预发布环境'], ['testing', '测试环境'], ['development', '开发环境']].map(([v, l]) => `<option value="${v}" ${(a.environment || 'production') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
@@ -70,26 +73,29 @@ var AssetDemo = window.AssetDemo = (() => {
           ${field('ae-purchased', '购买日期', a.purchased_at ? String(a.purchased_at).slice(0, 10) : '', 'type="date"')}
           ${field('ae-warranty', '保修到期', a.warranty_until ? String(a.warranty_until).slice(0, 10) : '', 'type="date"')}
         </div><div id="asset-editor-error" class="text-red small" role="alert" style="min-height:18px"></div>`,
-        button('取消', 'close-modal') + button('删除资产', 'asset-delete', false, `data-id="${escape(apiId)}"`) + button('保存修改', 'asset-save', true, `data-id="${escape(apiId)}"`));
+        button('取消', 'close-modal') + button('修改凭据', 'asset-credential', false, `data-id="${escape(apiId)}"`) + button('授权', 'asset-grants', false, `data-id="${escape(apiId)}"`) + button('删除资产', 'asset-delete', false, `data-id="${escape(apiId)}"`) + button('保存修改', 'asset-save', true, `data-id="${escape(apiId)}" data-windows="${windows ? 1 : 0}"`));
     }).catch(error => toast('读取资产失败：' + error.message));
   }
   async function saveAssetEdit(button) {
     const value = id => root.querySelector('#' + id)?.value?.trim() ?? '';
     const out = root.querySelector('#asset-editor-error');
+    const windows = button.dataset.windows === '1';
     const name = value('ae-name'), address = value('ae-address'), port = Number(value('ae-port'));
     if (!name || !address) { if (out) out.textContent = '资产名称和地址不能为空'; return; }
-    if (!port || port < 1 || port > 65535) { if (out) out.textContent = 'SSH 端口必须在 1-65535 之间'; return; }
+    if (!port || port < 1 || port > 65535) { if (out) out.textContent = `${windows ? 'RDP' : 'SSH'} 端口必须在 1-65535 之间`; return; }
     if (out) out.textContent = '正在保存...';
     const price = value('ae-price');
+    const patch = {
+      name, address, os_name: value('ae-os'), owner: value('ae-owner'),
+      department: value('ae-dept'), environment: value('ae-env'),
+      serial_number: value('ae-serial'), mac_address: value('ae-mac'), location: value('ae-location'),
+      supplier: value('ae-supplier'), purchase_order: value('ae-po'),
+      price_cents: price ? Math.round(Number(price) * 100) : 0,
+      purchased_at: value('ae-purchased'), warranty_until: value('ae-warranty')
+    };
+    if (windows) patch.rdp_port = port; else patch.ssh_port = port;
     try {
-      await window.QiyunAPI.updateAsset(button.dataset.id, {
-        name, address, ssh_port: port, os_name: value('ae-os'), owner: value('ae-owner'),
-        department: value('ae-dept'), environment: value('ae-env'),
-        serial_number: value('ae-serial'), mac_address: value('ae-mac'), location: value('ae-location'),
-        supplier: value('ae-supplier'), purchase_order: value('ae-po'),
-        price_cents: price ? Math.round(Number(price) * 100) : 0,
-        purchased_at: value('ae-purchased'), warranty_until: value('ae-warranty')
-      });
+      await window.QiyunAPI.updateAsset(button.dataset.id, patch);
       await window.QiyunAPI.refreshAssets();
       closeModal(); toast('资产已更新。');
     } catch (error) { if (out) out.textContent = '保存失败：' + error.message; }
@@ -100,18 +106,20 @@ var AssetDemo = window.AssetDemo = (() => {
     catch (error) { toast('删除失败：' + error.message); }
   }
   function ledgerRow(a) {
+    const windows = a.type === 'Windows' || a.assetType === 'windows_host';
     const verified = a.hostKeyStatus === 'verified';
-    const typeLabel = a.assetType === 'linux_host' || !a.assetType ? 'Linux 主机' : a.assetType;
+    const typeLabel = windows ? 'Windows 主机' : (a.assetType === 'linux_host' || !a.assetType ? 'Linux 主机' : a.assetType);
     return {
       source: 'api', id: a.assetCode, apiId: a.id, name: a.name, serial: a.serial_number || '',
-      icon: 'server', type: typeLabel, os: a.os_name || a.os || 'Linux',
-      status: verified ? (a.status === 'offline' ? '离线' : '在用') : '待核验',
-      online: verified ? (a.status === 'offline' ? '离线' : '在线') : '未纳管',
+      icon: 'server', type: typeLabel, os: a.os_name || a.os || (windows ? 'Windows' : 'Linux'),
+      status: windows ? '在用' : (verified ? (a.status === 'offline' ? '离线' : '在用') : '待核验'),
+      online: windows ? 'RDP 就绪' : (verified ? (a.status === 'offline' ? '离线' : '在线') : '未纳管'),
       owner: a.owner || '未指定', dept: a.department || '未分类', ip: a.ip || a.address || '—',
       mac: a.mac_address || '待采集', priceCents: a.price_cents || 0, price: null,
       purchased: shortDate(a.purchased_at), channel: a.supplier || '待补充',
       supplier: a.supplier || '待补充', warranty: shortDate(a.warranty_until), location: a.location || '待补充',
-      environment: a.environment || '', port: a.sshPort, fingerprint: a.hostKeyFingerprint || '',
+      environment: a.environment || '', port: windows ? (a.rdpPort || 3389) : a.sshPort, rdpPort: a.rdpPort || 3389,
+      windows, fingerprint: windows ? '' : (a.hostKeyFingerprint || ''),
       serialNumber: a.serial_number || '', macAddress: a.mac_address || '',
       lastSeen: a.updated_at ? String(a.updated_at).replace('T', ' ').slice(0, 16) : '—',
       lastUsed: '—', idle: '—', offline: '—', age: '—',
@@ -164,12 +172,12 @@ var AssetDemo = window.AssetDemo = (() => {
   }
   function saveState(){if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{page:state.page,selectedAsset:state.detailId||null,prototype:'栖云资产与应用运维 v0.4'},privateContent:{filter:state.filter}}).catch(()=>{});}
   function render(){const toastEl=root.querySelector('#app-toast');if(toastEl)root.appendChild(toastEl);const m=meta[state.page]||meta.overview;root.querySelector('#page-title').textContent=m[0];root.querySelector('#breadcrumb-current').textContent=m[0];root.querySelector('#page-eyebrow').textContent=m[1];root.querySelector('#page-description').textContent=m[2];root.querySelector('.heading-date strong').textContent=state.page==='terminal'?'GO · SQLITE':['applications','alerts','integrations','automation'].includes(state.page)?'2026.10.15':state.page==='monitoring'?'2026.10.23':'2026.10.08';root.querySelectorAll('[data-nav]').forEach(b=>{b.classList.toggle('active',b.dataset.nav===state.page);b.setAttribute('aria-current',b.dataset.nav===state.page?'page':'false');});const content=root.querySelector('#page-content');if(state.page==='terminal'&&window.AssetDemo.terminalWorkspace?.renderPage)window.AssetDemo.terminalWorkspace.renderPage(content);else content.innerHTML=pages[state.page]?pages[state.page]():'';window.AdminShell?.sync();refreshIcons();}
-  function navigate(page){if(!pages[page])return;closeModal();window.AdminShell?.beforeNavigate(page);state.page=page;render();saveState();}
+  function navigate(page){if(!pages[page])return;closeModal();window.AdminShell?.beforeNavigate(page);state.page=page;try{if(window.history?.replaceState)window.history.replaceState(null,'','#/'+page);}catch{}render();saveState();}
   function assetRows(list,compact=false){return list.map(raw=>{const a=safeAsset(raw);const price=a.source==='local'?(a.priceCents?money(a.priceCents):'待补充'):money(a.priceCents);return [
     `<div class="asset-name"><span class="asset-symbol">${icon(a.icon)}</span><div><button class="op-btn op-btn-link" data-action="asset-detail" data-id="${a.id}">${a.name}</button><small class="mono">${a.id}${a.source==='local'?' · 未持久化':''}</small></div></div>`,
     badge(a.status,a.status==='在用'?'green':a.status==='在库'?'blue':a.status==='待核验'?'blue':'amber'),
     `<strong>${a.owner}</strong><small>${a.dept}</small>`,
-    `<span class="mono">${a.ip}</span><small>${a.online==='在线'?'<span class="status-dot"></span>在线':a.online==='离线'?`<span class="text-amber">离线 ${a.offline}</span>`:'尚未纳管'}</small>`,
+    `<span class="mono">${a.ip}</span><small>${a.online==='在线'?'<span class="status-dot"></span>在线':a.online==='离线'?`<span class="text-amber">离线 ${a.offline}</span>`:a.online==='RDP 就绪'?'<span class="status-dot"></span>RDP 按需连接':'尚未纳管'}</small>`,
     compact?`<span class="mono">${price}</span><small>${a.age}</small>`:`${a.channel}<small class="mono">${price} · ${a.age}</small>`,
     a.source === 'api'
       ? `<div class="row" style="gap:6px;flex-wrap:wrap"><button class="op-btn op-btn-link" data-action="asset-detail" data-id="${a.id}">查看</button><button class="op-btn op-btn-link" data-action="asset-edit" data-id="${a.apiId}">编辑</button><button class="op-btn op-btn-link" data-action="asset-delete" data-id="${a.apiId}" data-name="${a.name}">删除</button></div>`
@@ -191,7 +199,7 @@ var AssetDemo = window.AssetDemo = (() => {
     const loadNotice=assetLoad.loaded?'':`<div class="notice amber between"><span>${assetLoad.error?'资产清单载入失败：'+escape(assetLoad.error.message||'无法连接 Go 服务')+(assetLoad.retrying?' · 正在自动重试':''):'正在从 Go 服务载入资产清单…'}</span>${assetLoad.error?button('⟳ 重新载入','reload-assets'):''}</div>`;
     const filtered=assets.filter(a=>(state.filter==='all'||a.status===state.filter||a.online===state.filter)&&Object.values(a).join(' ').toLowerCase().includes(state.query.toLowerCase()));
     return `${loadNotice}<div class="toolbar"><div class="row"><label><input id="asset-search" aria-label="筛选资产" placeholder="资产名称、编码、IP、领用人" value="${escape(state.query)}"></label><button class="op-btn" data-action="search-assets">搜索</button><select id="asset-filter" aria-label="资产状态筛选">${[['all','全部状态'],['在用','在用'],['待核验','待核验'],['离线','离线']].map(s=>`<option value="${s[0]}" ${state.filter===s[0]?'selected':''}>${s[1]}</option>`).join('')}</select></div><div class="row">${button('↓ 导出台账','export-assets')}${button('＋ 登记资产','new-asset',true)}</div></div>
-    ${panel('全部资产',`${assets.length?table(['资产名称 / 编码','资产状态','保管人 / 部门','IP 地址 / 在线状态','采购信息',''],assetRows(filtered)):'<div class="empty-state" style="padding:44px 0;text-align:center"><p>'+(assetLoad.loaded?'还没有登记任何资产':'资产清单尚未载入')+'</p><p class="small muted" style="margin-top:8px">'+(assetLoad.loaded?'添加 Linux 主机后，凭据加密保存在服务端，可核验指纹并打开真实终端。':'上方重试成功后会自动恢复；服务端资产不会被清空。')+'</p><div class="row" style="justify-content:center;margin-top:16px">'+button('＋ 添加真实主机','new-ssh-asset',true)+'</div></div>'}<div class="table-tail"><span>显示 ${filtered.length} 条 · 全部 ${assets.length} 条（来自 Go 服务资产库）</span><span>点击资产名称查看完整档案</span></div>`,badge('单一数据源','neutral'))}
+    ${panel('全部资产',`${assets.length?table(['资产名称 / 编码','资产状态','保管人 / 部门','IP 地址 / 在线状态','采购信息',''],assetRows(filtered)):'<div class="empty-state" style="padding:44px 0;text-align:center"><p>'+(assetLoad.loaded?'还没有登记任何资产':'资产清单尚未载入')+'</p><p class="small muted" style="margin-top:8px">'+(assetLoad.loaded?'添加 Linux 或 Windows 主机后，凭据加密保存在服务端；Linux 核验指纹后打开终端，Windows 可直接发起 RDP。':'上方重试成功后会自动恢复；服务端资产不会被清空。')+'</p><div class="row" style="justify-content:center;margin-top:16px">'+button('＋ 添加真实主机','new-ssh-asset',true)+'</div></div>'}<div class="table-tail"><span>显示 ${filtered.length} 条 · 全部 ${assets.length} 条（来自 Go 服务资产库）</span><span>点击资产名称查看完整档案</span></div>`,badge('单一数据源','neutral'))}
     <div class="grid-3">${panel('数据来源','<div class="small muted">本页资产全部来自 Go 服务 SQLite 资产库，与远程终端共用同一份数据；在终端删除资产后此处立即消失。<br>带“未持久化”标记的行由尚未接入服务端的采购/入库流程临时创建。</div>')}${panel('责任与归属','<div class="small muted">保管人、使用人、部门、位置与费用归属分别保存，调拨后保留历史快照。</div>')}${panel('观测可信度','<div class="small muted">在线状态来自主机指纹核验与最近一次连接；未核验资产显示“待核验”，不推断其在线与否。</div>')}</div>`;
   };
   function kv(pairs){return `<div class="details-grid">${pairs.map(p=>`<div><div class="detail-label">${p[0]}</div><div class="detail-value">${p[1]}</div></div>`).join('')}</div>`;}
@@ -200,9 +208,11 @@ var AssetDemo = window.AssetDemo = (() => {
     const detailTabs=[['basic','资产档案'],['telemetry','系统与链路'],['history','变更履历'],['cost','采购与费用']];
     const pending='<span class="muted">待补充</span>';
     let content='';
-    if(tab==='basic')content=`${kv([['资产编码',a.id],['资产状态',badge(a.status,a.status==='在用'?'green':'blue')],['资产类型',a.type],['SN 序列号',a.serial?a.serial:pending],['保管人',a.owner==='未指定'?pending:a.owner],['所属部门',a.dept],['实际位置',a.location==='待补充'?pending:a.location],['IP 地址',a.ip],['SSH 端口',String(a.port||'—')],['MAC 地址',a.mac==='待采集'?pending:a.mac],['在线状态',badge(a.online,a.online==='在线'?'green':'amber')],['主机指纹',a.fingerprint?badge('已核验','green'):badge('待核验','amber')],['最近更新',a.lastSeen]])}<div class="notice">资产记录来自 Go 服务资产库。未填写的采购类字段显示为待补充，系统不会生成占位数值。</div>`;
+    if(tab==='basic')content=`${kv([['资产编码',a.id],['资产状态',badge(a.status,a.status==='在用'?'green':'blue')],['资产类型',a.type],['SN 序列号',a.serial?a.serial:pending],['保管人',a.owner==='未指定'?pending:a.owner],['所属部门',a.dept],['实际位置',a.location==='待补充'?pending:a.location],['IP 地址',a.ip],[a.windows?'RDP 端口':'SSH 端口',String(a.port||'—')],['MAC 地址',a.mac==='待采集'?pending:a.mac],['在线状态',badge(a.online,a.online==='在线'?'green':a.online==='RDP 就绪'?'blue':'amber')],['主机指纹',a.windows?badge('RDP · 无需 SSH 指纹','blue'):(a.fingerprint?badge('已核验','green'):badge('待核验','amber'))],['最近更新',a.lastSeen]])}<div class="notice">资产记录来自 Go 服务资产库。未填写的采购类字段显示为待补充，系统不会生成占位数值。</div>`;
     if(tab==='telemetry'){
-      content=`${kv([['操作系统',a.os],['连接方式','SSH · WebSocket 网关'],['目标地址',`${a.ip}:${a.port||22}`],['主机指纹',a.fingerprint||pending],['采集方式','尚未接入主机指标采集'],['采集时间','—']])}<div class="notice amber">主机指标、已安装软件与端口采集尚未接入，本页不展示推断数据。可在远程终端内执行命令查看实时状态。</div>${table(['可执行操作','入口','说明'],[['打开交互式终端','远程终端','真实 SSH PTY；文件传输走 Go SFTP 分块接口'],['查看连接诊断','远程终端资产行 ◎','逐项显示认证失败原因']])}`;
+      content = a.windows
+        ? `${kv([['操作系统',a.os],['连接方式','Windows RDP · 本机 mstsc'],['目标地址',`${a.ip}:${a.port||3389}`],['凭据','资产库托管密码 · 仅传给本机连接器'],['RDP 签名','在远程管理弹窗中检测'],['采集方式','SSH 指标采集不适用；Windows Agent 尚未接入']])}<div class="notice amber">RDP 会话由操作者电脑上的 mstsc 建立，平台不代理画面、不录像；Windows 系统指标需要 Agent 或 WinRM 才能采集。</div>${table(['可执行操作','入口','说明'],[['打开 RDP 远程桌面','主机与远程 → 远程','本机签名 .rdp + 临时凭据，约 30 秒后清理'],['下载 .rdp 配置','远程管理弹窗','不含账号密码，打开后仍需输入凭据']])}`
+        : `${kv([['操作系统',a.os],['连接方式','SSH · WebSocket 网关'],['目标地址',`${a.ip}:${a.port||22}`],['主机指纹',a.fingerprint||pending],['采集方式','尚未接入主机指标采集'],['采集时间','—']])}<div class="notice amber">主机指标、已安装软件与端口采集尚未接入，本页不展示推断数据。可在远程终端内执行命令查看实时状态。</div>${table(['可执行操作','入口','说明'],[['打开交互式终端','远程终端','真实 SSH PTY；文件传输走 Go SFTP 分块接口'],['查看连接诊断','远程终端资产行 ◎','逐项显示认证失败原因']])}`;
     }
     if(tab==='history')content=`<div class="timeline">${[
       [a.lastSeen,'最近一次更新',`资产状态 ${a.status} · 在线 ${a.online} · 版本记录随服务端变更递增`],
@@ -210,7 +220,7 @@ var AssetDemo = window.AssetDemo = (() => {
       ['—','资产建档','由 Go 服务资产库创建，凭据以 AES-GCM 加密保存']
     ].map(x=>`<div class="timeline-item"><small>${x[0]}</small><strong>${x[1]}</strong><p>${x[2]}</p></div>`).join('')}</div><div class="notice">变更记录由服务端审计表保存；采购、领用与盘点单据尚未与资产库打通，完成后会合并到此处。</div>`;
     if(tab==='cost')content=`${kv([['采购单 / 明细行',a.purchase],['供应商',a.supplier],['购买渠道',a.channel],['采购含税单价',money(a.priceCents)],['购买数量','1 件（当前资产）'],['币种','CNY'],['费用归属',a.cost],['取得日期',a.purchased],['保修到期',a.warranty]])}<div class="notice">采购价、资产原值与折旧后净值单独核算。折旧年限、残值率、税额和费用分摊按企业会计政策配置；服务端尚未计算会计折旧。</div><div class="row">${button('查看财务对账','go',false,'data-page="finance"')}${button('查看采购记录','go',false,'data-page="procurement"')}</div>`;
-    const remote=raw.source==='api'?button('编辑资产','asset-edit',false,`data-id="${raw.apiId}"`)+button('连接终端','asset-remote',true,`data-id="${a.id}" ${a.online!=='在线'?'disabled':''}`):button('移除本地记录','asset-delete-local',false,`data-id="${a.id}"`);
+    const remote=raw.source==='api'?button('编辑资产','asset-edit',false,`data-id="${raw.apiId}"`)+button(a.windows?'打开 RDP':'连接终端','asset-remote',true,`data-id="${a.id}" ${!a.windows&&a.online!=='在线'?'disabled':''}`):button('移除本地记录','asset-delete-local',false,`data-id="${a.id}"`);
     modal(`${a.name} ${badge(a.status,'green')}`,`<div class="row small muted" style="margin-bottom:20px"><span class="mono">${a.id}</span><span>·</span><span>${a.dept} / ${a.owner}</span></div><div class="tabs">${detailTabs.map(t=>`<button class="${tab===t[0]?'active':''}" data-action="asset-tab" data-tab="${t[0]}">${t[1]}</button>`).join('')}</div>${content}`,button('关闭','close-modal')+remote);saveState();
   }
   pages.governance=()=>`${panel('角色与职责边界',table(['角色','业务范围','可执行动作','限制'],[['员工','本人资产与申请','领用申请、交接确认','不能批准自己的申请'],['采购负责人','采购与入库','登记采购、验收实物','无财务更正权限'],['行政管理员','库存与资产流转','审批、出库、调拨、盘点','差异调整需独立复核'],['财务人员','全部已确认业务明细','查询、核对、导出','不直接修改业务原单'],['IT 运维人员','授权主机与网络设备','会话、配置、PVE 任务','按资源授权；敏感操作复核']]),badge('建议权限模型','neutral'))}
@@ -224,13 +234,31 @@ var AssetDemo = window.AssetDemo = (() => {
     'reload-assets':async()=>{try{await window.QiyunAPI.refreshAssets();syncAssets();render();toast('资产清单已重新载入。');}catch(error){toast('仍无法载入资产清单：'+error.message);render();}},
     'export-assets':()=>{const list=assets.filter(a=>(state.filter==='all'||a.status===state.filter||a.online===state.filter)&&Object.values(a).join(' ').toLowerCase().includes(state.query.toLowerCase()));const cell=v=>{let s=String(v);if(/^[\s]*[=+@-]|^[\t\r\n]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"';};download('资产台账-'+new Date().toISOString().slice(0,10)+'.csv','\ufeff'+[['资产编码','名称','状态','保管人','部门','IP','MAC','在线状态','最近更新','供应商','采购价（元）','购买日期'],...list.map(a=>[a.id,a.name,a.status,a.owner,a.dept,a.ip,a.mac,a.online,a.lastSeen,a.supplier,a.priceCents?(a.priceCents/100).toFixed(2):'',a.purchased==='—'?'':a.purchased])].map(r=>r.map(cell).join(',')).join('\r\n'),'text/csv;charset=utf-8');},
     'new-asset':()=>modal('登记资产',`<div class="notice">两种方式，请按是否需要远程登录选择：</div><div class="stack" style="margin-top:16px">
-      <div class="between"><div><strong class="small">添加 Linux 主机（真实 SSH）</strong><p class="small muted">写入 Go 服务资产库 · 凭据 AES-GCM 加密 · 需核验主机指纹后才能连接</p></div>${button('去添加','new-ssh-asset',true)}</div>
+      <div class="between"><div><strong class="small">添加远程主机（Linux SSH / Windows RDP）</strong><p class="small muted">写入 Go 服务资产库 · 凭据 AES-GCM 加密 · Linux 需核验主机指纹，Windows 可直接发起本机 mstsc</p></div>${button('去添加','new-ssh-asset',true)}</div>
       <div class="between"><div><strong class="small">登记无远程访问的 IT 设备</strong><p class="small muted">笔记本、打印机等 · 仅保存在当前浏览器，刷新后不保留</p></div>${button('本地登记','new-local-asset')}</div></div>`,button('关闭','close-modal')),
     'new-ssh-asset':()=>{closeModal();navigate('terminal');setTimeout(()=>actions['terminal-add-asset']?.(),120);},
-    'new-local-asset':()=>modal('登记本地 IT 设备',`<div class="notice">此记录只写入当前浏览器，不会出现在服务端资产库，也无法用于远程连接。需要远程登录的服务器请用“添加 Linux 主机”。</div><form id="new-asset-form"><div class="form-grid"><div class="field"><label for="new-name">资产名称 *</label><input id="new-name" name="name" required placeholder="例如 ThinkPad T14"></div><div class="field"><label for="new-serial">SN 序列号 *</label><input id="new-serial" name="serial" required placeholder="唯一硬件序列号"></div><div class="field"><label for="new-owner">保管人 / 库房 *</label><input id="new-owner" name="owner" required value="行政资产库"></div><div class="field"><label for="new-price">采购价格（元）</label><input id="new-price" name="price" type="number" min="0" step="0.01" placeholder="可留空"></div><div class="field"><label for="new-date">购买日期</label><input id="new-date" name="date" type="date"></div><div class="field"><label for="new-channel">购买渠道</label><select id="new-channel" name="channel"><option>京东企业购</option><option>厂商直采</option><option>授权代理商</option><option>框架协议采购</option><option>待补充</option></select></div></div></form>`,button('取消','close-modal')+button('保存到当前浏览器','save-asset',true)),
+    'new-local-asset':()=>modal('登记本地 IT 设备',`<div class="notice">此记录只写入当前浏览器，不会出现在服务端资产库，也无法用于远程连接。需要远程登录的服务器请用“添加远程主机”。</div><form id="new-asset-form"><div class="form-grid"><div class="field"><label for="new-name">资产名称 *</label><input id="new-name" name="name" required placeholder="例如 ThinkPad T14"></div><div class="field"><label for="new-serial">SN 序列号 *</label><input id="new-serial" name="serial" required placeholder="唯一硬件序列号"></div><div class="field"><label for="new-owner">保管人 / 库房 *</label><input id="new-owner" name="owner" required value="行政资产库"></div><div class="field"><label for="new-price">采购价格（元）</label><input id="new-price" name="price" type="number" min="0" step="0.01" placeholder="可留空"></div><div class="field"><label for="new-date">购买日期</label><input id="new-date" name="date" type="date"></div><div class="field"><label for="new-channel">购买渠道</label><select id="new-channel" name="channel"><option>京东企业购</option><option>厂商直采</option><option>授权代理商</option><option>框架协议采购</option><option>待补充</option></select></div></div></form>`,button('取消','close-modal')+button('保存到当前浏览器','save-asset',true)),
     'save-asset':()=>{const f=root.querySelector('#new-asset-form');if(!f.reportValidity())return;const v=Object.fromEntries(new FormData(f));if(!v.name.trim()||!v.serial.trim()||!v.owner.trim()){toast('资产名称、序列号和保管人不能为空。');return;}if(assets.some(a=>(a.serial||'').toUpperCase()===v.serial.trim().toUpperCase())){toast('此 SN 已存在，请检查重复资产。');return;}assets.unshift({source:'local',id:'LOCAL-'+String(assets.filter(a=>a.source==='local').length+1).padStart(4,'0'),name:v.name.trim(),serial:v.serial.trim(),owner:v.owner.trim(),dept:'未分类',type:'IT 设备',icon:'laptop',os:'待采集',status:'在库',online:'未纳管',ip:'—',mac:'待采集',priceCents:v.price?Math.round(Number(v.price)*100):0,purchased:v.date||'—',channel:v.channel,supplier:'待补充',location:'待补充',warranty:'—',lastSeen:'—',lastUsed:'—',idle:'—',offline:'—',purchase:'待补充',used:'—',cost:'待补充',age:'—',history:[['—','存量资产登记',`序列号 ${v.serial.trim()} · 仅保存在当前浏览器`]]});closeModal();state.query='';state.filter='all';navigate('assets');toast('已保存到当前浏览器；该记录未写入服务端，刷新后不保留。');},
-    'asset-remote':b=>{const a=assets.find(x=>x.id===b.dataset.id);if(!a)return;if(a.source!=='api')return toast('该记录未写入服务端，无法建立真实会话。');if(a.online!=='在线')return toast('资产尚未通过 SSH 指纹核验，或当前不可连接。');navigate('terminal');setTimeout(()=>window.AssetDemo?.terminalWorkspace?.openHost?.(a.apiId),60);},
+    'asset-remote':b=>{const a=assets.find(x=>x.id===b.dataset.id);if(!a)return;if(a.source!=='api')return toast('该记录未写入服务端，无法建立真实会话。');if(a.windows){closeModal();navigate('hosts');setTimeout(()=>window.AssetDemo?.infrastructure?.openRemote?.(a.apiId),120);return;}if(a.online!=='在线')return toast('资产尚未通过 SSH 指纹核验，或当前不可连接。');navigate('terminal');setTimeout(()=>window.AssetDemo?.terminalWorkspace?.openHost?.(a.apiId),60);},
     'asset-edit':b=>assetEditor(b.dataset.id),
+    'asset-credential':b=>{
+      const id=b.dataset.id;
+      window.QiyunAPI.getAsset(id).then(raw=>{
+        const a=window.QiyunAPI.mapAsset(raw), win=a.type==='Windows';
+        modal(`修改凭据 · ${escape(a.name)}`,`<div class="notice">新密码只提交给同源 Go 服务并以 AES-GCM 加密保存，页面不会回显现有密码。${win?'<br>Microsoft 账户请填写 <span class="mono">MicrosoftAccount\\用户名</span> 或账户邮箱。':''}</div><form id="asset-credential-form"><div class="form-grid" style="margin-top:16px"><div class="field"><label for="ac-username">${win?'Windows 账号':'SSH 用户名'} *</label><input id="ac-username" required maxlength="128" value="${escape(a.username||'')}" autocomplete="username" placeholder="${win?'DOMAIN\\user 或 MicrosoftAccount\\user':'例如 root 或 ops'}"></div><div class="field"><label for="ac-password">新密码 *</label><input id="ac-password" type="password" required autocomplete="new-password"></div></div></form><div id="asset-credential-error" class="text-red small" role="alert" style="min-height:18px"></div>`,button('取消','close-modal')+button('保存凭据','asset-credential-save',true,`data-id="${escape(id)}"`));
+      }).catch(error=>toast('读取资产失败：'+error.message));
+    },
+    'asset-credential-save':async b=>{
+      const id=b.dataset.id;
+      const username=root.querySelector('#ac-username')?.value?.trim()||'';
+      const secret=root.querySelector('#ac-password')?.value||'';
+      const out=root.querySelector('#asset-credential-error');
+      if(!username){if(out)out.textContent='请填写账号。';return;}
+      if(!secret){if(out)out.textContent='请填写新密码。';return;}
+      if(out)out.textContent='正在保存...';
+      try{await window.QiyunAPI.updateCredential(id,{username,auth_type:'password',secret});await window.QiyunAPI.refreshAssets();closeModal();toast('凭据已更新，可重新发起远程连接。');}
+      catch(error){if(out)out.textContent='保存失败：'+error.message;}
+    },
     'asset-save':b=>saveAssetEdit(b),
     'asset-delete':b=>deleteAssetConfirm(b.dataset.id,b.dataset.name),
     'asset-delete-local':b=>{const index=assets.findIndex(a=>a.id===b.dataset.id&&a.source==='local');if(index<0)return;assets.splice(index,1);closeModal();render();toast('本地记录已移除。');},
@@ -240,9 +268,10 @@ var AssetDemo = window.AssetDemo = (() => {
     root.addEventListener('submit',e=>{e.preventDefault();const primary=root.querySelector('#modal-layer .modal-footer .op-btn-primary');if(primary&&!primary.disabled)primary.click();});
     root.querySelector('#app-nav').innerHTML=nav.map(n=>`${n[0]?`<div class="nav-section">${n[0]}</div>`:''}<button type="button" class="nav-link" data-nav="${n[1]}" aria-label="${n[2]}" data-tooltip="${n[2]}">${icon(n[3])}<span class="nav-label">${n[2]}</span>${n[4]?`<span class="nav-count">${n[4]}</span>`:''}</button>`).join('');
     const saved=window.openai?.widgetState?.modelContent;if(saved?.prototype==='栖云资产与应用运维 v0.4'&&pages[saved.page])state.page=saved.page;
+    const hashPage=String(window.location?.hash||'').replace(/^#\/?/,'');if(pages[hashPage])state.page=hashPage;
     root.addEventListener('click',e=>{const navButton=e.target.closest('[data-nav]');if(navButton){navigate(navButton.dataset.nav);return;}const b=e.target.closest('[data-action]');if(b&&!b.disabled){const fn=actions[b.dataset.action];if(fn)fn(b);}if(e.target===root.querySelector('#modal-layer'))closeModal();});
     root.addEventListener('change',e=>{if(e.target.id==='asset-filter'){state.filter=e.target.value;render();}});
-    root.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.closest('form')&&e.target.tagName!=='TEXTAREA'){e.preventDefault();const primary=root.querySelector('#modal-layer .modal-footer .op-btn-primary');if(primary&&!primary.disabled)primary.click();return;}if(e.key==='Escape'){closeModal();return;}if(e.key==='Enter'&&e.target.id==='global-search'){state.query=e.target.value.trim();state.filter='all';navigate('assets');}if(e.key==='Enter'&&e.target.id==='asset-search')actions['search-assets']();if(e.key==='Tab'&&!root.querySelector('#modal-layer').hidden){const focusables=[...root.querySelector('#modal-layer').querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href]')];const first=focusables[0],last=focusables[focusables.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}});
+    root.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.closest('form')&&e.target.tagName!=='TEXTAREA'){e.preventDefault();const primary=root.querySelector('#modal-layer .modal-footer .op-btn-primary');if(primary&&!primary.disabled)primary.click();return;}if(e.key==='Escape'){closeModal();return;}if(e.key==='Enter'&&e.target.id==='global-search'){state.query=e.target.value.trim();state.filter='all';navigate('assets');}if(e.key==='Enter'&&e.target.id==='asset-search')actions['search-assets']();if(e.key==='Tab'&&!root.querySelector('#modal-layer').hidden){const focusables=[...root.querySelector('#modal-layer').querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],summary')];const first=focusables[0],last=focusables[focusables.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}});
     window.addEventListener('openai:set_globals',e=>{const saved=e.detail?.globals?.widgetState?.modelContent;if(saved?.prototype==='栖云资产与应用运维 v0.4'&&pages[saved.page]&&state.page!==saved.page){state.page=saved.page;render();}});
     syncAssets();
     window.QiyunAPI?.onAssets?.(syncAssets);
@@ -255,3 +284,23 @@ var AssetDemo = window.AssetDemo = (() => {
 })();
 
 
+
+/* Fallback used if the Agent UI module is mid-edit and its local filteredHosts
+   helper is temporarily missing. In a browser, a window property is visible as
+   an unqualified global, so the Agent page keeps rendering instead of throwing. */
+window.filteredHosts = window.filteredHosts || function () {
+  const state = window.AssetDemo && window.AssetDemo.agentState;
+  if (!state || !Array.isArray(state.hosts)) return [];
+  const query = String(state.query || '').trim().toLowerCase();
+  const list = state.hosts.filter(function (host) {
+    if (query) {
+      const haystack = [host.hostname, host.host_id, host.os_name, host.virtualization].join(' ').toLowerCase();
+      if (!haystack.includes(query)) return false;
+    }
+    if (state.filter === 'pve') return !!host.pve_available;
+    if (state.filter === 'docker') return !!host.docker_available;
+    if (state.filter === 'k8s') return !!host.k8s_available;
+    return true;
+  });
+  return list;
+};

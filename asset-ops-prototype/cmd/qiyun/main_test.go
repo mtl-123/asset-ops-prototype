@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"qiyun-asset-ops/internal/rdp"
 	"qiyun-asset-ops/internal/secretbox"
 	"qiyun-asset-ops/internal/sshgateway"
 	"qiyun-asset-ops/internal/store"
@@ -32,7 +33,13 @@ func testApp(t *testing.T, token string) *app {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &app{store: st, ssh: gw, token: token, webRoot: dir}
+	// The RDP manager is real, but pinned to a non-Windows platform so these
+	// handler tests never try to spawn PowerShell.
+	rm, err := rdp.New(st, st, rdp.Options{DataDir: dir, Platform: "linux"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &app{store: st, ssh: gw, rdp: rm, token: token, webRoot: dir}
 }
 
 // The static handler must never serve runtime state. Before this allowlist existed,
@@ -228,5 +235,78 @@ func TestCreateTerminalSessionRequiresApprovedHostKey(t *testing.T) {
 	a.routes().ServeHTTP(rec, req)
 	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "HOST_KEY_UNKNOWN") {
 		t.Fatalf("expected 409 HOST_KEY_UNKNOWN, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// Windows assets are managed through RDP: the stored asset must carry the RDP
+// port and family, SSH terminal creation must be refused with a useful code, and
+// the launch endpoint must reject remote callers before touching the asset.
+func TestWindowsAssetAndRDPGuards(t *testing.T) {
+	a := testApp(t, "")
+	handler := a.routes()
+	payload, _ := json.Marshal(map[string]any{
+		"asset_code": "WIN-RDS-1", "name": "win-rds-01", "address": "10.20.30.33",
+		"ssh_port": 22, "rdp_port": 3390, "os_name": "Windows Server 2022",
+		"asset_type": "windows_host", "username": `CORP\ops`, "auth_type": "password", "secret": "pw",
+		"department": "IT",
+	})
+	create := httptest.NewRequest(http.MethodPost, "/api/v1/assets", bytes.NewReader(payload))
+	create.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	handler.ServeHTTP(createRec, create)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create windows asset %d: %s", createRec.Code, createRec.Body.String())
+	}
+	var asset store.Asset
+	if err := json.Unmarshal(createRec.Body.Bytes(), &asset); err != nil {
+		t.Fatal(err)
+	}
+	if asset.RDPPort != 3390 || asset.OSFamily != "windows" || asset.AssetType != "windows_host" || !asset.IsWindows() {
+		t.Fatalf("windows asset not normalised: %#v", asset)
+	}
+
+	sshBody, _ := json.Marshal(map[string]any{"asset_id": asset.ID})
+	sshReq := httptest.NewRequest(http.MethodPost, "/api/v1/terminal-sessions", bytes.NewReader(sshBody))
+	sshRec := httptest.NewRecorder()
+	handler.ServeHTTP(sshRec, sshReq)
+	if sshRec.Code != http.StatusConflict || !strings.Contains(sshRec.Body.String(), "RDP_ASSET") {
+		t.Fatalf("windows asset must not open an SSH terminal: %d %s", sshRec.Code, sshRec.Body.String())
+	}
+
+	remote := httptest.NewRequest(http.MethodPost, "/api/v1/assets/"+asset.ID+"/rdp/launch", bytes.NewReader([]byte(`{}`)))
+	remote.RemoteAddr = "203.0.113.9:5555"
+	remoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(remoteRec, remote)
+	if remoteRec.Code != http.StatusForbidden || !strings.Contains(remoteRec.Body.String(), "RDP_LOCAL_WINDOWS_ONLY") {
+		t.Fatalf("remote RDP launch must be refused: %d %s", remoteRec.Code, remoteRec.Body.String())
+	}
+
+	cross := httptest.NewRequest(http.MethodPost, "/api/v1/assets/"+asset.ID+"/rdp/launch", bytes.NewReader([]byte(`{}`)))
+	cross.RemoteAddr = "127.0.0.1:5555"
+	cross.Header.Set("Origin", "https://evil.example")
+	crossRec := httptest.NewRecorder()
+	handler.ServeHTTP(crossRec, cross)
+	if crossRec.Code != http.StatusForbidden || !strings.Contains(crossRec.Body.String(), "RDP_CROSS_ORIGIN") {
+		t.Fatalf("cross-origin RDP launch must be refused: %d %s", crossRec.Code, crossRec.Body.String())
+	}
+
+	local := httptest.NewRequest(http.MethodPost, "/api/v1/assets/"+asset.ID+"/rdp/launch", bytes.NewReader([]byte(`{}`)))
+	local.RemoteAddr = "127.0.0.1:5555"
+	localRec := httptest.NewRecorder()
+	handler.ServeHTTP(localRec, local)
+	if localRec.Code != http.StatusNotImplemented || !strings.Contains(localRec.Body.String(), "RDP_PLATFORM_UNSUPPORTED") {
+		t.Fatalf("non-Windows service must explain the platform limit: %d %s", localRec.Code, localRec.Body.String())
+	}
+}
+
+func TestWindowsAssetRejectsPrivateKeyCredential(t *testing.T) {
+	a := testApp(t, "")
+	_, err := a.store.CreateAsset(context.Background(), store.CreateAsset{
+		AssetCode: "WIN-KEY", Name: "win-key", Address: "10.20.30.34",
+		OSName: "Windows Server 2022", AssetType: "windows_host",
+		Username: "ops", AuthType: "private_key", Secret: "not-a-key",
+	})
+	if err == nil || !strings.Contains(err.Error(), "远程桌面") {
+		t.Fatalf("expected RDP password explanation, got %v", err)
 	}
 }

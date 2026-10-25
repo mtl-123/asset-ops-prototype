@@ -3,7 +3,7 @@
   const D = window.AssetDemo;
   const esc = (v) => D.escape(String(v == null ? '' : v));
   const state = {
-    hostFilter: 'all', selectedIP: 21, selectedDevice: 'sw-core-01', trafficMode: 'in', activeRemoteHost: null,
+    hostFilter: 'all', hostQuery: '', selectedIP: 21, selectedDevice: 'sw-core-01', trafficMode: 'in', activeRemoteHost: null,
     hosts: [ ],
     vms: [
       { id: 101, name: 'srv-prod-01', os: 'Ubuntu 24.04', ip: '10.20.30.21', node: 'pve-node-01', cpu: 4, ram: 8, disk: 120, status: '运行中', owner: '陈宇' },
@@ -22,17 +22,26 @@
   Object.keys(used).forEach(n => { state.leases[n] = { status: 'used', hostname: used[n], mac: 'BC:24:11:2D:90:' + Number(n).toString(16).padStart(2, '0').toUpperCase(), owner: 'IT 运维', binding: true, managed: true }; });
   state.hosts.forEach(h => { const n = h.ip.split('.').pop(); state.leases[n] = { status: 'used', hostname: h.id, mac: h.mac, owner: h.owner, binding: true, managed: true }; });
   // Host inventory mirrors the Go asset store so a deleted asset disappears here.
+  // Windows hosts are real assets too: they are managed with RDP and therefore
+  // must not be forced to wait for an SSH host-key approval they can never get.
   function syncHosts() {
     const status = window.QiyunAPI?.assetStatus?.() || { loaded: true };
-    const remote = (window.QiyunAPI?.getAssets?.() || []).map(a => ({
-      source: 'api', id: a.id, name: a.name, os: a.os || 'Linux', type: 'Linux', ip: a.ip,
-      owner: [a.owner, a.department].filter(Boolean).join(' · ') || '未指定',
-      status: a.status === '在线' ? '在线' : '离线',
-      last: a.updated_at ? String(a.updated_at).replace('T', ' ').slice(0, 16) : '—',
-      idle: a.status === '在线' ? '已核验主机指纹' : '未连接', cpu: null, ram: null,
-      ports: String(a.sshPort || 22), apps: [], asset: a.assetCode, mac: a.macAddress || '待采集',
-      fingerprint: a.hostKeyFingerprint || ''
-    }));
+    const remote = (window.QiyunAPI?.getAssets?.() || []).map(a => {
+      const windows = a.type === 'Windows' || a.assetType === 'windows_host';
+      return {
+        source: 'api', id: a.id, name: a.name, os: a.os || (windows ? 'Windows' : 'Linux'),
+        type: windows ? 'Windows' : 'Linux', ip: a.ip,
+        owner: [a.owner, a.department].filter(Boolean).join(' · ') || '未指定',
+        status: windows ? '待连接' : (a.status === '在线' ? '在线' : '待核验'),
+        last: a.updated_at ? String(a.updated_at).replace('T', ' ').slice(0, 16) : '—',
+        idle: windows ? 'RDP · 本机 mstsc' : (a.status === '在线' ? '已核验主机指纹' : '未连接'),
+        cpu: null, ram: null,
+        ports: String(windows ? (a.rdpPort || 3389) : (a.sshPort || 22)), apps: [],
+        asset: a.assetCode, mac: a.macAddress || '待采集',
+        fingerprint: a.hostKeyFingerprint || '', rdpPort: a.rdpPort || 3389,
+        username: a.username || '', credentialId: a.credentialId
+      };
+    });
     const local = state.hosts.filter(h => h.source !== 'api');
     // 清单未载入（或载入失败）时保留上一次成功的结果，避免主机页瞬间变成 0 台。
     if (!status.loaded && remote.length === 0 && state.hosts.some(h => h.source === 'api')) { if (D.state.page === 'hosts') D.render(); return; }
@@ -49,6 +58,7 @@
     return window.HostMetrics?.summary?.() || { total: 0, ok: 0, failed: 0, pending: 0, interval: 0, error: null };
   }
   function metricCell(h) {
+    if (h.type === 'Windows') return '<span class="muted">RDP 主机</span><small class="muted" style="display:block;margin-top:6px">不采集 SSH 指标</small>';
     const m = metricOf(h.id);
     if (m && m.snapshot) {
       const s = m.snapshot;
@@ -85,18 +95,27 @@
     if (device) return `网络设备 ${device.name}`;
     return `源资产网络配置 · ${(state.leases[n] || {}).hostname || ip}`;
   }
-  function hostAvailable(h) { return !!h && ['在线', '待关注'].includes(h.status) && !state.vms.some(v => v.ip === h.ip && v.status !== '运行中'); }
+  function hostAvailable(h) { return !!h && ['在线', '待关注', '待连接'].includes(h.status) && !state.vms.some(v => v.ip === h.ip && v.status !== '运行中'); }
   function requireRemoteHost(id) {
     const h = state.hosts.find(x => x.id === id);
     if (hostAvailable(h)) return h;
     state.activeRemoteHost = null;
-    D.modal('当前无法建立演示会话', `<div class="notice">${h ? esc(h.name) + ' 当前为“' + esc(h.status) + '”' : '目标主机不可用'}，请先恢复设备运行与采集心跳。</div><div class="infra-snapshot">已停止虚拟机与离线主机不提供模拟 SSH 命令、远程桌面会话或文件传输。</div>`);
+    D.modal('当前无法建立远程会话', `<div class="notice">${h ? esc(h.name) + ' 当前为“' + esc(h.status) + '”' : '目标主机不可用'}，请先完成主机指纹核验或恢复设备运行与采集心跳。</div><div class="infra-snapshot">Linux 主机需要先批准 SSH 主机指纹；Windows 主机需要先保存为 Windows 资产。</div>`);
     return null;
   }
   function ipCounts() { return Object.values(state.leases).reduce((a, l) => { a[l.status]++; return a; }, { used: 0, reserved: 0, conflict: 0 }); }
+  function filteredHosts() {
+    const query = String(state.hostQuery || '').trim().toLowerCase();
+    return state.hosts.filter(h => {
+      const byFilter = state.hostFilter === 'all' || h.type === state.hostFilter || (state.hostFilter === 'attention' && h.status !== '在线' && h.status !== '待连接');
+      if (!byFilter) return false;
+      if (!query) return true;
+      return [h.name, h.asset, h.ip, h.owner, h.os, h.id, h.mac].filter(Boolean).join(' ').toLowerCase().includes(query);
+    });
+  }
   function hosts() {
-    const filtered = state.hosts.filter(h => state.hostFilter === 'all' || h.type === state.hostFilter || (state.hostFilter === 'attention' && h.status !== '在线'));
-    const available = state.hosts.filter(hostAvailable).length, attention = state.hosts.filter(h => h.status !== '在线').length;
+    const filtered = filteredHosts();
+    const available = state.hosts.filter(hostAvailable).length, attention = state.hosts.filter(h => h.status !== '在线' && h.status !== '待连接').length;
     const rate = state.hosts.length ? ((available / state.hosts.length) * 100).toFixed(1) + '%' : '—';
     const ms = metricSummary();
     const metricTone = ms.total === 0 ? 'amber' : (ms.ok ? 'green' : 'red');
@@ -104,11 +123,11 @@
     const metricHint = ms.error ? esc(ms.error.message || '无法读取指标接口')
       : ms.total === 0 ? '首次采样进行中，约 1 分钟内出数'
       : `${ms.ok} 台正常 · ${ms.failed} 台失败 · 每 ${ms.interval || 60} 秒`;
-    return styles + `<div class="infra-toolbar"><div class="tabs">${[['all','全部主机'],['Windows','Windows'],['Linux','Linux'],['attention',`需关注 ${attention}`]].map(([v,l]) => `<button class="${state.hostFilter === v ? 'active' : ''}" data-action="infra-host-filter" data-filter="${v}">${l}</button>`).join('')}</div><div class="row">${button('＋ 添加主机','infra-add-host',true)}${button('立即采集','infra-collect-all')}${button('采集接入说明','infra-collector')}${button('刷新资产清单','infra-refresh')}</div></div>
+    return styles + `<div class="infra-toolbar"><div class="tabs">${[['all','全部主机'],['Windows','Windows'],['Linux','Linux'],['attention',`需关注 ${attention}`]].map(([v,l]) => `<button class="${state.hostFilter === v ? 'active' : ''}" data-action="infra-host-filter" data-filter="${v}">${l}</button>`).join('')}</div><div class="row"><input id="infra-host-search" aria-label="搜索主机" placeholder="搜索名称、IP、资产编号、责任人" value="${esc(state.hostQuery)}" style="width:230px">${button('＋ 添加主机','infra-add-host',true)}${button('立即采集','infra-collect-all')}${button('采集接入说明','infra-collector')}${button('刷新资产清单','infra-refresh')}</div></div>
     <div class="grid-4">${D.metric('纳管主机', String(state.hosts.length), 'Windows '+state.hosts.filter(h=>h.type==='Windows').length+' · Linux '+state.hosts.filter(h=>h.type==='Linux').length)}${D.metric('在线率', rate, `${available} 台可达 · ${state.hosts.length - available} 台离线或停止`)}${D.metric('主机指标采集', metricValue, metricHint, metricTone)}${D.metric('数据来源', 'Go 资产库', '与远程终端共用同一份资产数据')}</div>
-    ${D.panel('主机与系统清单', tbl(['设备 / 资产编号', '系统 / IP 地址', '领用人与部门', '运行状态', '资源使用', '最后更新', '操作'], filtered.map(h => [
-      `<span class="infra-cell-title">${esc(h.name)}</span><small>${h.asset}</small>`, `<span>${esc(h.os)}</span><small class="muted mono" style="display:block;margin-top:6px">${h.ip}:${h.ports}</small>`, esc(h.owner), `${statusBadge(h.status)}<small class="muted" style="display:block;margin-top:7px">${h.idle}</small>`, metricCell(h), `<span class="small muted">${h.last}</span>`, `<div class="row" style="gap:6px">${button('详情','infra-host-detail',false,`data-host="${h.id}"`)}${button('远程','infra-remote',false,`data-host="${h.id}"`)}</div>`
-    ])), '<span class="small muted">资产来自 Go 服务资产库 · 删除资产后此处同步移除</span>')}
+    ${D.panel(`主机与系统清单 · ${filtered.length}/${state.hosts.length}`, tbl(['设备 / 资产编号', '系统 / IP 地址', '领用人与部门', '运行状态', '资源使用', '最后更新', '操作'], filtered.map(h => [
+      `<span class="infra-cell-title">${esc(h.name)}</span><small>${h.asset}</small>`, `<span>${esc(h.os)}</span><small class="muted mono" style="display:block;margin-top:6px">${h.ip}:${h.ports}</small>`, esc(h.owner), `${statusBadge(h.status)}<small class="muted" style="display:block;margin-top:7px">${h.idle}</small>`, metricCell(h), `<span class="small muted">${h.last}</span>`, `<div class="row" style="gap:6px;flex-wrap:wrap">${button('详情','infra-host-detail',false,`data-host="${h.id}"`)}${h.source==='api'?button('编辑','infra-host-edit',false,`data-host="${h.id}"`)+button('删除','infra-host-delete',false,`data-host="${h.id}"`):''}${button('远程','infra-remote',false,`data-host="${h.id}"`)}</div>`
+    ])) + `${filtered.length?'':'<div class="infra-snapshot">没有匹配的主机。请调整筛选条件或搜索关键字，也可以直接“＋ 添加主机”。</div>'}`, `<span class="small muted">${state.hostQuery?`搜索“${esc(state.hostQuery)}” · `:''}资产来自 Go 服务资产库 · 支持编辑与删除</span>`)}
     <div class="grid-2" style="margin-top:20px">${D.panel('采集范围', `<div class="infra-chips">${['硬件序列号','操作系统与补丁','安装应用','监听端口','登录活动','CPU / 内存 / 磁盘','网卡 / MAC','资产关联'].map(x => `<span class="infra-chip">${x}</span>`).join('')}</div><div class="infra-snapshot">采集方式：Linux 主机已通过 SSH 只读采样（/proc、df）获取 CPU / 内存 / 磁盘；Windows 需 WinRM 或 Agent，尚未接入。</div>`)}${D.panel('待接入能力', `<div class="infra-session-row"><span>主机 CPU / 内存 / 磁盘指标采集</span>${ms.total ? badge('已接入 · SSH 采样','green') : badge('采集中','amber')}</div><div class="infra-session-row"><span>已安装软件与补丁清单</span>${badge('未接入','amber')}</div><div class="infra-session-row"><span>登录活动与端口采集</span>${badge('未接入','amber')}</div><div class="infra-hint">以上能力需要主机侧采集器；未接入时页面不展示推断数据，可在远程终端内实时查看。</div>`)}</div>`;
   }
   function pve() {
@@ -147,6 +166,7 @@
   }
   // 详情弹窗里的指标区块：有数据报数据，没数据说清楚原因，不画假曲线。
   function metricSection(h) {
+    if (h.type === 'Windows') return `<div class="infra-modal-section"><h4>资源指标</h4><div class="infra-snapshot">Windows 主机通过 RDP 管理，SSH 指标采集不适用。CPU、内存、磁盘需由 Windows Agent 或 WinRM 采集，当前尚未接入，页面不会用演示数值代替。</div></div>`;
     const m = metricOf(h.id);
     const body = m && m.snapshot
       ? `<div class="infra-ms"><div><small>CPU 使用率</small><b>${m.snapshot.cpu_percent}%</b><small>${m.snapshot.cores} 核 · 负载 ${m.snapshot.load1} / ${m.snapshot.load5} / ${m.snapshot.load15}</small></div><div><small>内存</small><b>${m.snapshot.mem_percent}%</b><small>${gb(m.snapshot.mem_used_bytes)} / ${gb(m.snapshot.mem_total_bytes)} GB</small></div><div><small>磁盘</small><b>${m.snapshot.disk_percent}%</b><small>${(m.snapshot.disks || []).slice(0, 2).map(d => esc(d.mount) + ' ' + d.used_percent + '%').join(' · ') || '无挂载点数据'}</small></div></div>
@@ -166,11 +186,181 @@
   }
   function hostDetail(id) {
     const h=state.hosts.find(x=>x.id===id);if(!h)return;
-    D.modal(esc(h.name),`<div class="row" style="gap:10px">${statusBadge(h.status)}<span class="mono muted small">${h.asset} / ${h.id}</span></div><div class="infra-kv" style="margin-top:22px"><span>操作系统</span><strong>${h.os}</strong><span>IP / MAC</span><strong class="mono">${h.ip} / ${h.mac}</strong><span>责任人</span><strong>${esc(h.owner)}</strong><span>最近采集</span><strong>${h.last}</strong><span>使用状态</span><strong>${h.idle}</strong></div>${metricSection(h)}<div class="infra-modal-section"><h4>已安装应用 · ${h.apps.length} 项</h4><div class="infra-chips">${h.apps.map(a=>`<span class="infra-chip">${a}</span>`).join('')}</div></div><div class="infra-modal-section"><h4>监听端口</h4>${tbl(['端口 / 协议','服务','检查结论'],h.ports.split(' / ').map(p=>[p+' / TCP',({'22':'OpenSSH','443':'HTTPS','9100':'Node Exporter','3389':'Remote Desktop','445':'SMB','5986':'WinRM TLS','8007':'Proxmox Backup','8080':'应用测试接口'}[p] || '未登记服务'),badge(['445','8080'].includes(p)?'需复核访问范围':'已登记',['445','8080'].includes(p)?'amber':'green')]))}<div class="infra-hint">端口来自主机监听清单；外部可达性需结合防火墙与网络探测。</div></div>`,button('远程管理','infra-remote',true,`data-host="${h.id}"`));
+    D.modal(esc(h.name),`<div class="row" style="gap:10px">${statusBadge(h.status)}<span class="mono muted small">${h.asset} / ${h.id}</span></div><div class="infra-kv" style="margin-top:22px"><span>操作系统</span><strong>${h.os}</strong><span>IP / MAC</span><strong class="mono">${h.ip} / ${h.mac}</strong><span>责任人</span><strong>${esc(h.owner)}</strong><span>最近采集</span><strong>${h.last}</strong><span>使用状态</span><strong>${h.idle}</strong></div>${metricSection(h)}<div class="infra-modal-section"><h4>已安装应用 · ${h.apps.length} 项</h4><div class="infra-chips">${h.apps.map(a=>`<span class="infra-chip">${a}</span>`).join('')}</div></div><div class="infra-modal-section"><h4>监听端口</h4>${tbl(['端口 / 协议','服务','检查结论'],h.ports.split(' / ').map(p=>[p+' / TCP',({'22':'OpenSSH','443':'HTTPS','9100':'Node Exporter','3389':'Remote Desktop','445':'SMB','5986':'WinRM TLS','8007':'Proxmox Backup','8080':'应用测试接口'}[p] || '未登记服务'),badge(['445','8080'].includes(p)?'需复核访问范围':'已登记',['445','8080'].includes(p)?'amber':'green')]))}<div class="infra-hint">端口来自主机监听清单；外部可达性需结合防火墙与网络探测。</div></div>`,(h.source==='api'?button('编辑','infra-host-edit',false,`data-host="${h.id}"`)+button('删除','infra-host-delete',false,`data-host="${h.id}"`):'')+button('远程管理','infra-remote',true,`data-host="${h.id}"`));
+  }
+  // ---- Windows RDP: the real local mstsc launch chain (web-vpn) ----
+  let rdpSession = null;
+  const rdpEl = (id, session = rdpSession) => session?.panel.querySelector('#' + id);
+  // A request belongs to the DOM instance that started it, even when the same
+  // host is reopened. Late results must never enable or update another dialog.
+  const rdpCurrent = session => !!session && session === rdpSession && D.root.contains(session.panel) && !session.panel.closest('[hidden]');
+  const rdpActionSession = b => rdpCurrent(rdpSession) && rdpSession.panel.contains(b) && !b.disabled && !rdpSession.pending ? rdpSession : null;
+  function rdpSetStatus(tone, title, detail, session = rdpSession) {
+    if (!rdpCurrent(session)) return;
+    const dot = rdpEl('rdp-cap-dot', session), heading = rdpEl('rdp-cap-title', session), text = rdpEl('rdp-cap-detail', session);
+    if (dot) dot.style.background = ({ ok: '#319981', warning: '#d9a441', error: '#c0534a' })[tone] || '#9aa8a2';
+    if (heading) heading.textContent = title;
+    if (text) text.textContent = detail || '';
+  }
+  function rdpSetError(message, technical = '', session = rdpSession) {
+    if (!rdpCurrent(session)) return;
+    rdpEl('rdp-error', session).textContent = message || '';
+    rdpEl('rdp-error-box', session).hidden = !message;
+    const details = rdpEl('rdp-error-details', session);
+    details.hidden = !technical;
+    details.open = false;
+    rdpEl('rdp-error-technical', session).textContent = technical;
+  }
+  function rdpFailure(error, fallback, session) {
+    const message = error?.code === 'RDP_SIGNING_ACCESS_DENIED'
+      ? '当前服务无法写入 Windows 证书/私钥存储。请从本机普通 Windows 终端运行 start-qiyun.cmd 后重试。'
+      : fallback;
+    const detail = String(error?.message || '').trim();
+    const technical = [error?.code, detail && detail !== message && detail !== message.replace(/。$/, '') ? detail : ''].filter(Boolean).join('\n');
+    rdpSetError(message, technical, session);
+  }
+  function rdpSyncControls(session) {
+    if (!rdpCurrent(session)) return;
+    const cap = session.capabilities, busy = !!session.pending;
+    session.panel.setAttribute('aria-busy', String(busy));
+    session.panel.querySelectorAll('button,input,select').forEach(el => { el.disabled = busy; });
+    rdpEl('rdp-launch', session).disabled = busy || !(cap?.available && cap?.signing?.configured);
+    rdpEl('rdp-signing', session).hidden = !cap?.available || !!cap?.signing?.configured;
+    const web = rdpEl('rdp-web', session);
+    if (web) {
+      const available = session.mode === 'connector' && !!session.connectorInfo?.web_rdp;
+      web.hidden = !available;
+      web.disabled = busy || !available;
+    }
+  }
+  function rdpSetConnectorBox(session, visible, message = '', downloadUrl = '') {
+    if (!rdpCurrent(session)) return;
+    const box = rdpEl('rdp-connector-box', session);
+    if (!box) return;
+    box.hidden = !visible;
+    const text = rdpEl('rdp-connector-msg', session);
+    if (text) text.textContent = message;
+    const link = rdpEl('rdp-connector-download', session);
+    if (link && downloadUrl) link.href = downloadUrl;
+  }
+  async function loadConnector(session = rdpSession) {
+    if (!rdpCurrent(session) || session.pending) return;
+    session.pending = 'checking';
+    session.capabilities = null;
+    rdpSyncControls(session);
+    rdpSetError('', '', session);
+    rdpSetConnectorBox(session, false);
+    rdpSetStatus('checking', '正在检测本机 Windows 连接器…', '中心页面会把连接交给本机连接器，再由本机启动 mstsc', session);
+    try {
+      if (!window.QiyunAPI?.rdpConnectorInfo || !window.QiyunAPI?.connectorHealth) {
+        throw new Error('资产数据层没有提供连接器接口。');
+      }
+      const info = await window.QiyunAPI.rdpConnectorInfo();
+      if (!rdpCurrent(session)) return;
+      session.connectorInfo = info;
+      window.QiyunAPI.setConnectorBase?.(info.connector_url);
+      const health = await window.QiyunAPI.connectorHealth();
+      if (!rdpCurrent(session)) return;
+      if (!health) {
+        session.capabilities = { available: false, signing: { configured: false } };
+        rdpSetStatus('warning', '未检测到本机 Windows 连接器', '第一次使用需要在当前 Windows 电脑安装连接器；安装后重新检测。', session);
+        rdpSetConnectorBox(session, true, '未检测到本机连接器。', info.download_url || '');
+        return;
+      }
+      session.capabilities = health.capabilities || { available: false };
+      const cap = session.capabilities;
+      if (!cap.available) {
+        rdpSetStatus('error', '本机连接器不可用', '连接器无法启动 mstsc，请检查 Windows 环境。', session);
+        if (cap.error) rdpFailure({ message: cap.error }, '本机连接器不可用，请查看技术信息。', session);
+        return;
+      }
+      if (!cap.signing?.configured) {
+        rdpSetStatus('warning', '需要首次启用受信任 RDP 签名', '点击“首次启用签名”，由本机连接器完成证书与策略配置。', session);
+        return;
+      }
+      const hash = String(cap.signing.signingHash || '').toUpperCase();
+      rdpSetStatus('ok', '本机连接器已就绪', '远程桌面客户端已检测' + (hash ? ' · 受信任签名 ' + hash : ''), session);
+    } catch (error) {
+      rdpSetStatus('error', '连接器检测失败', '无法读取本机连接器状态。', session);
+      rdpFailure(error, '无法读取连接器状态，请重新检测。', session);
+    } finally {
+      session.pending = null;
+      rdpSyncControls(session);
+    }
+  }
+  async function loadRdpCapabilities(session = rdpSession) {
+    if (!rdpCurrent(session) || session.pending) return;
+    session.pending = 'checking';
+    session.capabilities = null;
+    rdpSyncControls(session);
+    rdpSetError('', '', session);
+    rdpSetStatus('checking', '正在检测本机 mstsc 连接器…', '检查远程桌面客户端、rdpsign 与受信任签名', session);
+    try {
+      if (!window.QiyunAPI?.rdpCapabilities) throw new Error('资产数据层没有提供 RDP 能力接口。');
+      const cap = await window.QiyunAPI.rdpCapabilities();
+      if (!rdpCurrent(session)) return;
+      session.capabilities = cap;
+      const signing = cap.signing || {};
+      if (!cap.available) {
+        rdpSetStatus('error', '本机无法启动远程桌面', '服务需在 Windows 上运行，并提供 mstsc / rdpsign。', session);
+        if (cap.error) rdpFailure({ message: cap.error }, '本机连接器不可用，请查看技术信息。', session);
+        return;
+      }
+      if (!signing.configured) {
+        rdpSetStatus('warning', '需要首次启用受信任 RDP 签名', '启用后可识别 RDP 发布者；将在当前 Windows 服务账户下配置签名。', session);
+        return;
+      }
+      const hash = String(signing.signingHash || '').toUpperCase();
+      rdpSetStatus('ok', '本机 mstsc 已就绪', '远程桌面客户端已检测' + (hash ? ' · 受信任签名 ' + hash : ''), session);
+    } catch (error) {
+      rdpSetStatus('error', 'RDP 能力检测失败', '暂时无法确认本机连接器状态。', session);
+      rdpFailure(error, '无法读取本机连接器状态，请重新检测。', session);
+    } finally {
+      session.pending = null;
+      rdpSyncControls(session);
+    }
+  }
+  function windowsRemotePanel(h) {
+    return `<div id="rdp-panel" class="infra-rdp-panel">
+      <div class="infra-rdp-status" role="status" aria-live="polite">
+        <span id="rdp-cap-dot" class="infra-rdp-dot" aria-hidden="true"></span>
+        <div><strong id="rdp-cap-title">正在检测本机 mstsc…</strong><p id="rdp-cap-detail" class="small muted">检查远程桌面客户端、rdpsign 与受信任签名</p></div>
+      </div>
+      <div id="rdp-error-box" class="infra-rdp-error" hidden>
+        <p id="rdp-error" class="text-red small" role="alert"></p>
+        <details id="rdp-error-details" hidden><summary>查看技术信息</summary><pre id="rdp-error-technical"></pre></details>
+      </div>
+      <div id="rdp-connector-box" class="infra-rdp-error" hidden>
+        <p id="rdp-connector-msg" class="text-red small" role="status"></p>
+        <a id="rdp-connector-download" class="op-btn" href="/downloads/QiyunConnector.zip" target="_blank" rel="noopener">下载 Windows 连接器</a>
+        <p class="small muted" style="margin:8px 0 0">下载后解压并运行安装脚本，填写中心地址；安装器会注册登录自启。装好后点「重新检测」。</p>
+      </div>
+      <div class="infra-rdp-settings">
+        <div class="field"><label for="rdp-port">RDP 端口 *</label><input id="rdp-port" type="number" min="1" max="65535" value="${h.rdpPort || 3389}"></div>
+        <div class="field"><label id="rdp-account-label">登录账号</label><div class="infra-rdp-account mono" id="rdp-account" aria-labelledby="rdp-account-label">${esc(h.username || '由 Windows 提示输入')}</div><small class="muted">Microsoft 账户填 MicrosoftAccount\\用户名 或邮箱</small></div>
+      </div>
+      <dl class="infra-rdp-meta"><dt>目标地址</dt><dd class="mono">${esc(h.ip)}</dd><dt>凭据来源</dt><dd>资产库托管密码 · 只传给本机连接器</dd></dl>
+      <fieldset class="infra-rdp-resources"><legend>登录与本地资源</legend>
+        <label><input type="checkbox" id="rdp-prompt"> 由 Windows 提示输入凭据（不使用托管密码）</label>
+        <label><input type="checkbox" id="rdp-clipboard" checked> 剪贴板重定向</label>
+        <label><input type="checkbox" id="rdp-drives" data-action="infra-rdp-drives"> 本地磁盘重定向</label>
+        <div id="rdp-drive-options" class="infra-rdp-drive-options" hidden><select id="rdp-drive-mode" aria-label="磁盘重定向范围"><option value="all">所有磁盘</option><option value="custom">指定盘符</option></select><input id="rdp-drive-list" aria-label="指定盘符" placeholder="D:,E:\\" maxlength="60"></div>
+        <label><input type="checkbox" id="rdp-fullscreen"> 全屏</label>
+        <label><input type="checkbox" id="rdp-multimon"> 多显示器</label>
+      </fieldset>
+      <div class="infra-rdp-actions">${button('连接远程桌面','infra-rdp-launch',true,`id="rdp-launch" data-host="${esc(h.id)}" disabled`)}${button('浏览器打开远程桌面','infra-rdp-web',false,'id="rdp-web" hidden')}${button('首次启用签名','infra-rdp-signing',false,'id="rdp-signing" hidden')}${button('重新检测','infra-rdp-refresh',false,'id="rdp-refresh"')}${button('下载 .rdp 配置','infra-rdp',false,`data-host="${esc(h.id)}"`)}</div>
+      <div class="infra-rdp-hint">连接会在本机打开可见的 mstsc。平台只记录发起请求与目标，不代理 RDP 画面，也不保证远端认证成功；密码不进入浏览器存储、URL 或 .rdp 文件。</div>
+    </div>`;
   }
   function remote(id) {
-    const h=requireRemoteHost(id);if(!h)return;state.activeRemoteHost = h.id;
-    D.modal(`远程管理 · ${h.name}`,`<div class="notice">交互演示：当前未连接真实设备，不执行命令或传输文件。</div><div class="infra-kv" style="margin-top:18px"><span>目标设备</span><strong class="mono">${h.ip}</strong><span>连接方式</span><strong>${h.type==='Windows'?'Windows RDP / 文件通道':'SSH / SFTP'}</strong><span>操作责任人</span><strong>赵敏 · IT 管理员</strong></div>${h.type==='Windows'?`<div class="infra-remote-options"><div><strong>本地 Windows 桌面</strong><p>下载 .rdp 配置后由本地 mstsc 打开。配置仅包含地址，不保存账号或密码。</p>${button('下载 .rdp 配置','infra-rdp',true,`data-host="${h.id}"`)}</div><div><strong>会话与文件</strong><p>查看演示会话，以及上传下载交互。多会话能力取决于 Windows 版本与 RDS 授权。</p>${button('查看演示会话','infra-session',false,`data-host="${h.id}"`)}</div></div>`:`<div class="infra-readonly">ssh ops@${h.ip}</div><div class="infra-terminal" id="infra-terminal" style="margin-top:14px">演示终端准备就绪\n主机：${h.id}\n使用下方按钮查看只读命令演示。</div><div class="row" style="gap:8px;margin-top:14px">${button('模拟执行 uptime','infra-ssh-command',true,'data-command="uptime"')}${button('模拟执行 df -h','infra-ssh-command',false,'data-command="disk"')}${button('文件传输演示','infra-session',false,`data-host="${h.id}"`)}</div>`}<div class="infra-snapshot">正式接入：最小权限授权、凭据托管、MFA、审批时窗、命令 / 会话审计与文件审计。管理入口应通过受控网关访问。</div>`);
+    const h = requireRemoteHost(id); if (!h) return; state.activeRemoteHost = h.id;
+    D.modal(`远程管理 · ${esc(h.name)}`, `<div class="infra-kv${h.type === 'Windows' ? ' infra-rdp-target' : ''}" style="margin-top:4px"><span>目标设备</span><strong class="mono">${esc(h.ip)}</strong><span>连接方式</span><strong>${h.type === 'Windows' ? 'Windows RDP · 本机 mstsc' : 'SSH / SFTP'}</strong><span>资产编号</span><strong>${esc(h.asset || '—')}</strong></div>${h.type === 'Windows' ? windowsRemotePanel(h) : `<div class="notice">Linux 主机的真实 SSH 会话在“Linux 终端”中打开。</div><div class="infra-readonly">ssh ${esc(h.username || 'ops')}@${esc(h.ip)}</div><div class="row" style="gap:8px;margin-top:14px">${button('打开 Linux 终端','infra-open-terminal',true,`data-host="${h.id}"`)}</div><div class="infra-snapshot">正式接入：最小权限授权、凭据托管、MFA、审批时窗、命令 / 会话审计与文件审计。</div>`}`);
+    const centralMode = !!window.QiyunAuth?.state?.authEnabled;
+    rdpSession = h.type === 'Windows' ? { panel: D.root.querySelector('#rdp-panel'), hostId: h.id, capabilities: null, pending: null, mode: centralMode ? 'connector' : 'local', connectorInfo: null } : null;
+    if (rdpSession) {
+      if (centralMode) loadConnector(rdpSession);
+      else loadRdpCapabilities(rdpSession);
+    }
   }
   function vmCreate() {
     const first=Array.from({length:64},(_,i)=>i+1).find(i=>!state.leases[i]);
@@ -197,7 +387,7 @@
     }
     D.modal(`MAC 与 IP 台账绑定 · 10.20.30.${n}`,`<div class="notice">仅修改演示台账；不下发 DHCP 或交换机配置。</div><div class="form-grid" style="margin-top:18px">${field('主机 / 设备名称',`<input id="infra-bind-host" value="${esc(l.hostname||'')}" placeholder="例如 laptop-sales-01" maxlength="80">`)}${field('责任人',`<input id="infra-bind-owner" value="${esc(l.owner||'')}" maxlength="60">`)}${field('MAC 地址',`<input id="infra-bind-mac" value="${esc(l.mac||'')}" placeholder="AA:BB:CC:DD:EE:FF" maxlength="17">`)}</div>${l.status==='conflict'?'<div class="infra-snapshot">此地址仍存在发现冲突。保存绑定保留冲突标记，实际消除冲突后再由采集结果解除。</div>':''}<div id="infra-error" class="infra-error" role="alert"></div>`,button('保存台账绑定','infra-ip-bind-save',true));
   }
-  D.infrastructure = { getHosts: () => state.hosts.map(h => ({...h, apps:[...(h.apps||[])]})), syncHosts };
+  D.infrastructure = { getHosts: () => state.hosts.map(h => ({...h, apps:[...(h.apps||[])]})), syncHosts, openRemote: remote };
   Object.assign(D.pages,{hosts,pve,ipam,network});
   // infra.js 在打包顺序里早于 terminal-gateway.js，直接订阅时 window.QiyunAPI 还不存在，
   // 可选链会把订阅静默吞掉，于是这一页永远是“纳管主机 0”。改成等数据层就绪再绑定。
@@ -210,11 +400,38 @@
     syncHosts();
   }
   window.HostMetrics?.on?.(() => { if (D.state.page === 'hosts') D.render(); });
+  // The host search filters while typing; re-render then restore focus/caret so
+  // the input does not lose keystrokes or scroll position.
+  if (D.root?.addEventListener) {
+    D.root.addEventListener('input', event => {
+      if (event.target?.id !== 'infra-host-search') return;
+      state.hostQuery = event.target.value;
+      if (D.state.page !== 'hosts') return;
+      D.render();
+      const input = D.root.querySelector('#infra-host-search');
+      if (input) {
+        input.focus({ preventScroll: true });
+        try { input.setSelectionRange(state.hostQuery.length, state.hostQuery.length); } catch { /* non-text input */ }
+      }
+    });
+  }
   if (window.QiyunAPI) bindAssetSource();
   else if (typeof window.addEventListener === 'function') window.addEventListener('qiyun:api-ready', bindAssetSource, { once: true });
   Object.assign(D.actions,{
     'infra-host-filter': b=>{state.hostFilter=b.dataset.filter;D.render();},
     'infra-host-detail':b=>hostDetail(b.dataset.host),
+    'infra-host-edit':b=>{
+      const h=state.hosts.find(x=>x.id===b.dataset.host); if(!h)return;
+      if(h.source!=='api')return D.toast('本地/演示主机不支持在这里编辑。');
+      if(typeof D.assetEditor!=='function')return D.toast('资产编辑器未就绪。');
+      D.assetEditor(h.id);
+    },
+    'infra-host-delete':b=>{
+      const h=state.hosts.find(x=>x.id===b.dataset.host); if(!h)return;
+      if(h.source!=='api')return D.toast('本地/演示主机不支持在这里删除。');
+      if(typeof D.deleteAssetConfirm!=='function')return D.toast('删除入口未就绪。');
+      D.deleteAssetConfirm(h.id,h.name);
+    },
     'infra-remote':b=>remote(b.dataset.host),
     'infra-add-host':()=>{
       // 复用终端页那张真实资产表单（写库 + 指纹核验），但不跳页面。
@@ -225,6 +442,8 @@
     },
     'infra-collect-metrics':async b=>{
       const id=b.dataset.host;
+      const host=state.hosts.find(h=>h.id===id);
+      if(host?.type==='Windows')return D.toast('Windows 主机通过 RDP 管理，暂不提供 SSH 指标采集。');
       if(!window.HostMetrics?.collect)return D.toast('指标采集服务未就绪。');
       D.toast('正在通过 SSH 采集…');
       try{const item=await window.HostMetrics.collect(id);
@@ -236,8 +455,8 @@
     },
     'infra-collect-all':async()=>{
       if(!window.HostMetrics?.collect)return D.toast('指标采集服务未就绪。');
-      const targets=state.hosts.filter(h=>h.source==='api');
-      if(!targets.length)return D.toast('没有可采集的服务器。');
+      const targets=state.hosts.filter(h=>h.source==='api'&&h.type!=='Windows');
+      if(!targets.length)return D.toast('没有可采集的 Linux 服务器。');
       D.toast(`正在采集 ${targets.length} 台主机…`);
       const results=await Promise.allSettled(targets.map(h=>window.HostMetrics.collect(h.id)));
       const ok=results.filter(r=>r.status==='fulfilled'&&r.value.status==='ok').length;
@@ -247,7 +466,111 @@
     'infra-refresh':async()=>{try{await window.QiyunAPI?.refreshAssets?.();syncHosts();await window.HostMetrics?.refresh?.();D.render();D.toast('资产与指标已重新载入。');}catch(error){D.toast('刷新失败：'+error.message);}},
     'infra-collector':()=>D.modal('主机采集接入规划',`<div class="notice">真实接入尚未配置，以下为原型中的计划范围。</div>${tbl(['对象','建议方式','能力'],[['Windows','Agent / WinRM HTTPS','软件、补丁、性能、登录记录、端口'],['Linux','Agent / SSH 密钥','系统、包清单、监听端口、资源指标'],['网络设备','SNMP v3 / NETCONF','接口、链路、CPU、配置备份'],['流量','NetFlow / sFlow / IPFIX','IP 会话与聚合带宽']])}<div class="infra-snapshot">采集凭据集中托管、限定网段与命令、记录数据来源与采集时间，结合授权边界部署。</div>`),
     'infra-ssh-command':b=>{if(!requireRemoteHost(state.activeRemoteHost))return;const el=D.root.querySelector('#infra-terminal');if(el)el.textContent=b.dataset.command==='disk'?'[演示输出 · 无真实连接]\n$ df -h\nFilesystem      Size  Used Avail Use% Mounted on\n/dev/sda2       118G   46G   66G  42% /\n/dev/sdb1       493G  164G  304G  36% /data':'[演示输出 · 无真实连接]\n$ uptime\n14:32:00 up 42 days, 5:14, 1 user, load average: 0.34, 0.42, 0.38\n\n此命令样例已记录到本地演示会话。';},
-    'infra-rdp':b=>{const h=requireRemoteHost(b.dataset.host);if(!h||h.type!=='Windows')return;const content=`full address:s:${h.ip}:3389\r\nprompt for credentials:i:1\r\nauthentication level:i:2\r\nredirectclipboard:i:0\r\nredirectdrives:i:0\r\n`;const blob=new Blob([content],{type:'application/x-rdp'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`DEMO-${h.id}.rdp`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);D.toast('已下载演示地址的 .rdp 配置；使用前请核实目标地址。');},
+    'infra-rdp-refresh':b=>{const session=rdpActionSession(b);if(!session)return;return session.mode==='connector'?loadConnector(session):loadRdpCapabilities(session);},
+    'infra-rdp-drives':b=>{if(!rdpActionSession(b))return;const options=rdpEl('rdp-drive-options');if(options)options.hidden=!b.checked;},
+    'infra-rdp-signing':async b=>{
+      const session=rdpActionSession(b);if(!session||b.hidden)return;
+      const connector=session.mode==='connector';
+      if(connector ? !window.QiyunAPI?.connectorSigning : !window.QiyunAPI?.rdpSetupSigning)return rdpSetError('RDP 接口未就绪。');
+      session.pending='setup';rdpSyncControls(session);rdpSetError('', '', session);
+      rdpSetStatus('checking','正在配置受信任 RDP 发布者…',connector?'正在本机连接器中配置签名，可能弹出 UAC，请稍候。':'正在当前 Windows 服务账户下配置签名，请稍候。',session);
+      try{
+        const status=connector?await window.QiyunAPI.connectorSigning():await window.QiyunAPI.rdpSetupSigning();
+        if(!rdpCurrent(session))return;
+        D.toast(`受信任 RDP 发布者已启用 · ${String(status.signingHash||'').toUpperCase()}`);
+        session.pending=null;
+        await (connector?loadConnector(session):loadRdpCapabilities(session));
+      }catch(error){
+        rdpSetStatus('error','签名初始化失败','尚未完成签名配置。',session);
+        rdpFailure(error,'无法启用受信任 RDP 签名，请重试或查看技术信息。',session);
+      }finally{session.pending=null;rdpSyncControls(session);}
+    },
+    'infra-rdp-launch':async b=>{
+      const session=rdpActionSession(b);if(!session)return;
+      const id=b.dataset.host||session.hostId;if(id!==session.hostId)return;
+      const h=state.hosts.find(x=>x.id===id);if(!h)return D.toast('目标主机不存在。');
+      if(!window.QiyunAPI?.rdpLaunch)return rdpSetError('RDP 接口未就绪。');
+      const port=Number(rdpEl('rdp-port',session)?.value||h.rdpPort||3389);
+      if(!Number.isInteger(port)||port<1||port>65535)return rdpSetError('RDP 端口必须在 1-65535 之间。');
+      const body={
+        port,
+        redirect_clipboard:!!rdpEl('rdp-clipboard',session)?.checked,
+        redirect_drives:!!rdpEl('rdp-drives',session)?.checked,
+        drive_mode:rdpEl('rdp-drive-mode',session)?.value||'all',
+        drive_list:rdpEl('rdp-drive-list',session)?.value||'',
+        fullscreen:!!rdpEl('rdp-fullscreen',session)?.checked,
+        multi_monitor:!!rdpEl('rdp-multimon',session)?.checked,
+        prompt_credentials:!!rdpEl('rdp-prompt',session)?.checked
+      };
+      if(body.redirect_drives&&body.drive_mode==='custom'&&!body.drive_list.trim())return rdpSetError('选择“指定盘符”时请填写盘符，例如 D:,E:\\');
+      const label=b.textContent;session.pending='launch';rdpSyncControls(session);b.textContent='正在启动 mstsc…';rdpSetError('', '', session);
+      try{
+        let result;
+        if(session.mode==='connector'){
+          if(!window.QiyunAPI?.rdpTicket||!window.QiyunAPI?.connectorLaunch)throw new Error('连接器接口未就绪。');
+          const ticket=await window.QiyunAPI.rdpTicket(h.id,body);
+          result=await window.QiyunAPI.connectorLaunch(ticket.ticket);
+        }else{
+          result=await window.QiyunAPI.rdpLaunch(h.id,body);
+        }
+        if(!rdpCurrent(session))return;
+        D.toast(`远程桌面已启动 · ${result.target}${result.pid?' · PID '+result.pid:''}`);
+      }catch(error){
+        if(!rdpCurrent(session))return;
+        rdpFailure(error,'启动 mstsc 失败，请查看技术信息后重试。',session);
+        if(error.code==='RDP_SIGNING_REQUIRED'){
+          if(session.capabilities)session.capabilities.signing={...session.capabilities.signing,configured:false};
+          rdpSetStatus('warning','需要首次启用受信任 RDP 签名','点击“首次启用签名”配置当前 Windows 服务账户的 RDP 发布者。',session);
+        }else if(['RDP_PLATFORM_UNSUPPORTED','RDP_LOCAL_WINDOWS_ONLY','RDP_ASSET_NOT_WINDOWS'].includes(error.code)){
+          if(session.capabilities)session.capabilities.available=false;
+          rdpSetStatus('error','本机无法启动远程桌面','请检查服务运行环境与目标资产类型。',session);
+        }else if(error.code==='RDP_TICKET_INVALID'||error.code==='RDP_TICKET_REDEEM_FAILED'){
+          rdpSetError('连接票据失效，请重新点击连接。', error.code, session);
+          await loadConnector(session);
+        }
+      }finally{session.pending=null;if(rdpCurrent(session))b.textContent=label;rdpSyncControls(session);}
+    },
+    'infra-rdp-web':async b=>{
+      const session=rdpActionSession(b);if(!session)return;
+      const id=b.dataset.host||session.hostId;if(id!==session.hostId)return;
+      const h=state.hosts.find(x=>x.id===id);if(!h)return D.toast('目标主机不存在。');
+      if(!window.QiyunAPI?.webRdp)return rdpSetError('Guacamole 网关未配置。');
+      const port=Number(rdpEl('rdp-port',session)?.value||h.rdpPort||3389);
+      if(!Number.isInteger(port)||port<1||port>65535)return rdpSetError('RDP 端口必须在 1-65535 之间。');
+      const body={
+        port,
+        redirect_clipboard:!!rdpEl('rdp-clipboard',session)?.checked,
+        redirect_drives:!!rdpEl('rdp-drives',session)?.checked,
+        drive_mode:rdpEl('rdp-drive-mode',session)?.value||'all',
+        drive_list:rdpEl('rdp-drive-list',session)?.value||'',
+        fullscreen:!!rdpEl('rdp-fullscreen',session)?.checked,
+        multi_monitor:!!rdpEl('rdp-multimon',session)?.checked,
+        prompt_credentials:!!rdpEl('rdp-prompt',session)?.checked
+      };
+      if(body.redirect_drives&&body.drive_mode==='custom'&&!body.drive_list.trim())return rdpSetError('选择“指定盘符”时请填写盘符，例如 D:,E:\\');
+      const label=b.textContent;session.pending='web';rdpSyncControls(session);b.textContent='正在打开…';rdpSetError('', '', session);
+      try{
+        const result=await window.QiyunAPI.webRdp(h.id,body);
+        if(!rdpCurrent(session))return;
+        window.open(result.url,'_blank','noopener,noreferrer');
+        D.toast('已请求在浏览器中打开远程桌面；若被拦截请允许弹窗。');
+      }catch(error){
+        if(!rdpCurrent(session))return;
+        rdpFailure(error,'浏览器远程桌面打开失败，请查看技术信息。',session);
+      }finally{
+        session.pending=null;
+        if(rdpCurrent(session))b.textContent=label;
+        rdpSyncControls(session);
+      }
+    },
+    'infra-open-terminal':b=>{
+      const host=state.hosts.find(x=>x.id===b.dataset.host);
+      const registered=(window.QiyunAPI?.getAssets?.()||[]).find(a=>a.ip===host?.ip);
+      if(!registered)return D.toast('该主机尚未登记到真实资产库。');
+      D.closeModal();D.navigate('terminal');
+      setTimeout(()=>window.AssetDemo?.terminalWorkspace?.openHost?.(registered.id),120);
+    },
+    'infra-rdp':b=>{if(!rdpActionSession(b))return;const h=requireRemoteHost(b.dataset.host);if(!h||h.type!=='Windows')return;const port=h.rdpPort||3389;const content=`full address:s:${h.ip}:${port}\r\nprompt for credentials:i:1\r\nauthentication level:i:2\r\nenablecredsspsupport:i:1\r\nredirectclipboard:i:1\r\nredirectdrives:i:0\r\n`;const blob=new Blob([content],{type:'application/x-rdp'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`qiyun-${String(h.ip).replace(/[^0-9a-zA-Z.-]/g,'_')}.rdp`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);D.toast('已下载不含账号密码的 .rdp 配置；打开后仍需自行输入凭据。');},
     'infra-session':b=>{const h=requireRemoteHost(b.dataset.host);if(!h)return;state.activeRemoteHost=h.id;D.modal('会话与文件传输演示',`<div class="notice">当前没有建立远程连接。以下会话与文件均为样例。</div>${h&&h.id==='win-rds-01'?`<div class="infra-modal-section"><h4>Windows Server 远程会话 · 样例</h4>${tbl(['用户','会话 ID','状态'],[['chenyu','2',badge('活动','green')],['wangming','3',badge('活动','green')],['zhaomin','4',badge('断开','neutral')]])}</div>`:'<div class="infra-snapshot">Windows 桌面版并发能力有限；Windows Server 多会话需 RDS 角色及合规授权。Linux 文件管理可通过受控 SFTP 通道实现。</div>'}<div class="infra-modal-section"><h4>文件浏览器 · 演示目录</h4>${tbl(['文件','大小','操作'],[['deployment-notes.txt','178 B',button('下载样例','infra-sample-download')],['system-report.log','12 KB',badge('只读样例','neutral')]])}<div class="field" style="margin-top:18px"><label>选择本地文件进行上传交互预览（不会读取或传出内容）</label><input id="infra-upload-file" type="file"></div><div id="infra-upload-result" class="infra-snapshot">尚未选择文件</div></div>`,button('预览上传记录','infra-upload-preview',true));},
     'infra-upload-preview':()=>{if(!requireRemoteHost(state.activeRemoteHost))return;const input=D.root.querySelector('#infra-upload-file'),out=D.root.querySelector('#infra-upload-result');if(out)out.textContent=input&&input.files.length?`演示记录：${input.files[0].name} · ${Math.ceil(input.files[0].size/1024)} KB。仅显示文件元数据，没有上传。`:'请先选择一个文件。';},
     'infra-sample-download':()=>{if(!requireRemoteHost(state.activeRemoteHost))return;const blob=new Blob(['Asset Operations prototype\nThis is a demo file, not a file from a remote host.\nNo remote session is connected.\n'],{type:'text/plain;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='demo-deployment-notes.txt';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);},

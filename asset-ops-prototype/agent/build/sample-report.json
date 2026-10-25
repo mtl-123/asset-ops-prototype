@@ -1,0 +1,66 @@
+﻿{
+  "schema_version": 1,
+  "agent_version": "0.1.0",
+  "host_id": "demo-pve",
+  "collected_at": "2026-10-25T10:00:00Z",
+  "host": {
+    "hostname": "demo-pve（示例）",
+    "os_name": "Debian GNU/Linux",
+    "os_version": "12",
+    "kernel_version": "6.8.12-1-pve",
+    "arch": "x86_64",
+    "uptime_seconds": 86400,
+    "cpu": {"usage_percent": 12.5, "logical_cores": 8, "physical_cores": 4},
+    "memory": {"usage_percent": 42.0, "total_bytes": 8589934592, "used_bytes": 3607772528},
+    "disks": [
+      {"mount": "/", "filesystem": "ext4", "usage_percent": 55.0, "total_bytes": 107374182400, "used_bytes": 59055800320}
+    ]
+  },
+  "users": {
+    "logged_in_count": 2,
+    "session_count": 2,
+    "local_user_count": 5,
+    "stale_days": 90,
+    "stale_count": 1,
+    "lastlog_available": true,
+    "logged_in": [{"user": "ops", "tty": "pts/0", "host": "10.0.0.5", "login_time": "2026-10-25 09:00"}],
+    "stale": [{"user": "old-user", "last_login": "2024-01-01T00:00:00Z", "days_inactive": 663, "never": false}],
+    "never_logged_in": ["never-user"]
+  },
+  "platforms": {
+    "pve": {
+      "available": true,
+      "node": "demo-pve",
+      "version": "pve-manager/8.2.4",
+      "error": null,
+      "vms": [
+        {"vmid": 101, "name": "win-1", "kind": "qemu", "status": "running", "ostype": "win11", "os_family": "windows", "cpu_cores": 4, "memory_bytes": 8589934592, "disk_bytes": 107374182400, "ip_addresses": ["10.0.0.4"], "connection": {"protocol": "rdp", "host": "10.0.0.4", "port": 3389}}
+      ],
+      "containers": [
+        {"vmid": 200, "name": "ct-1", "kind": "lxc", "status": "running", "ostype": "ubuntu", "os_family": "linux", "cpu_cores": 2, "memory_bytes": 2147483648, "disk_bytes": 21474836480, "ip_addresses": ["10.0.0.5"], "connection": {"protocol": "ssh", "host": "10.0.0.5", "port": 22}}
+      ]
+    },
+    "docker": {
+      "available": true,
+      "version": "27.3.1",
+      "error": null,
+      "containers_total": 2,
+      "containers_running": 1,
+      "containers": [
+        {"id": "abcdef012345", "name": "nginx", "image": "nginx:latest", "state": "running", "status": "Up 2 hours", "ports": "0.0.0.0:8080->80/tcp", "cpu_percent": 1.2, "memory_usage": "12MiB / 1GiB"}
+      ]
+    },
+    "kubernetes": {
+      "available": true,
+      "context": "demo",
+      "node_count": 1,
+      "nodes_ready": 1,
+      "pod_count": 3,
+      "pods_running": 2,
+      "pods_pending": 1,
+      "pods_failed": 0,
+      "nodes": [{"name": "node-1", "ready": true, "roles": ["control-plane"], "kubelet_version": "v1.30.0", "cpu_cores": 8, "memory_bytes": 16777216000}],
+      "unhealthy_pods": [{"namespace": "prod", "name": "api-1", "phase": "Pending", "restarts": 2, "reason": "ImagePullBackOff"}]
+    }
+  }
+}

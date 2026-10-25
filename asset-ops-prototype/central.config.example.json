@@ -1,0 +1,19 @@
+{
+  "listen": "127.0.0.1:8765",
+  "data_dir": "C:\\ProgramData\\QiyunAssetOps\\data",
+  "web_root": "C:\\Program Files\\QiyunAssetOps",
+  "public_url": "https://ops.example.com",
+  "allowed_origins": "ops.example.com",
+  "allowed_cidrs": "",
+  "admin_user": "admin",
+  "metrics_interval": "60s",
+  "connector_url": "http://127.0.0.1:8766",
+  "connector_download": "/downloads/QiyunConnector.zip",
+  "guacamole_url": "",
+  "guacamole_user": "",
+  "guacamole_password": "",
+  "guacamole_data_source": "",
+  "guacamole_rdp_security": "nla",
+  "guacamole_tls_seclevel": "",
+  "guacamole_domain": ""
+}

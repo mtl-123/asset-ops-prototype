@@ -5,11 +5,11 @@
   const groups=[
     {id:'asset',name:'资产管理',icon:'box-open',pages:['assets','procurement','circulation','inventory','finance']},
     {id:'application',name:'应用与监控',icon:'chart-line',pages:['applications','monitoring','alerts']},
-    {id:'infra',name:'基础设施',icon:'server',pages:['hosts','pve','ipam','network']},
+    {id:'infra',name:'基础设施',icon:'server',pages:['hosts','pve','agents','ipam','network']},
     {id:'platform',name:'平台管理',icon:'users-cog',pages:['integrations','automation','governance']}
   ];
-  const icons={overview:'home',assets:'box-open',procurement:'shopping-cart',circulation:'exchange-alt',inventory:'clipboard-check',finance:'receipt',applications:'laptop-code',monitoring:'chart-line',alerts:'bell',hosts:'laptop',pve:'layer-group',ipam:'network-wired',network:'chart-line',integrations:'plug',automation:'tasks',governance:'shield-alt'};
-  let prefs={theme:'default',layout:'vertical',fixed:true,tags:true,compact:false},collapsed=false,mobileOpen=false,tabs=['overview'],lastPage=null,opened=new Set(['asset','application']),draft=null,drawerFocus=null;
+  const icons={overview:'home',assets:'box-open',procurement:'shopping-cart',circulation:'exchange-alt',inventory:'clipboard-check',finance:'receipt',applications:'laptop-code',monitoring:'chart-line',alerts:'bell',hosts:'laptop',pve:'layer-group',agents:'server',ipam:'network-wired',network:'chart-line',integrations:'plug',automation:'tasks',governance:'shield-alt'};
+  let prefs={theme:'default',layout:'vertical',fixed:true,tags:true,compact:false},collapsed=false,mobileOpen=false,tabs=['overview'],lastPage=null,opened=new Set(['asset','application','infra']),draft=null,drawerFocus=null;
   try{const s=JSON.parse(localStorage.getItem(KEY)||'null');if(s){if(['default','green','gold'].includes(s.theme))prefs.theme=s.theme;if(['vertical','horizontal'].includes(s.layout))prefs.layout=s.layout;for(const k of ['fixed','tags','compact'])if(typeof s[k]==='boolean')prefs[k]=s[k];}}catch{}
   const I=name=>`<span class="vab-icon vab-icon-${name}" aria-hidden="true"></span>`;
   const label=p=>A.meta[p]?.[0]||p;

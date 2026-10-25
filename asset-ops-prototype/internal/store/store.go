@@ -22,6 +22,7 @@ type Asset struct {
 	Name               string    `json:"name"`
 	Address            string    `json:"address"`
 	SSHPort            int       `json:"ssh_port"`
+	RDPPort            int       `json:"rdp_port"`
 	OSFamily           string    `json:"os_family"`
 	OSName             string    `json:"os_name"`
 	Owner              string    `json:"owner"`
@@ -53,6 +54,7 @@ type CreateAsset struct {
 	Name        string `json:"name"`
 	Address     string `json:"address"`
 	SSHPort     int    `json:"ssh_port"`
+	RDPPort     int    `json:"rdp_port"`
 	OSName      string `json:"os_name"`
 	Owner       string `json:"owner"`
 	Department  string `json:"department"`
@@ -80,6 +82,7 @@ type AssetPatch struct {
 	Name          *string `json:"name"`
 	Address       *string `json:"address"`
 	SSHPort       *int    `json:"ssh_port"`
+	RDPPort       *int    `json:"rdp_port"`
 	OSName        *string `json:"os_name"`
 	Owner         *string `json:"owner"`
 	Department    *string `json:"department"`
@@ -125,6 +128,7 @@ func (s *Store) Close() error { return s.db.Close() }
 const assetsDDL = `CREATE TABLE IF NOT EXISTS assets (
  id TEXT PRIMARY KEY, asset_code TEXT NOT NULL, name TEXT NOT NULL,
  address TEXT NOT NULL, ssh_port INTEGER NOT NULL CHECK(ssh_port BETWEEN 1 AND 65535),
+ rdp_port INTEGER NOT NULL DEFAULT 3389 CHECK(rdp_port BETWEEN 1 AND 65535),
  os_family TEXT NOT NULL DEFAULT 'linux', os_name TEXT NOT NULL DEFAULT '', owner TEXT NOT NULL DEFAULT '',
  department TEXT NOT NULL DEFAULT '', environment TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'unknown',
  credential_id TEXT NOT NULL REFERENCES credentials(id), host_key TEXT NOT NULL DEFAULT '',
@@ -155,6 +159,9 @@ CREATE TABLE IF NOT EXISTS audit_events (
 	if err != nil {
 		return err
 	}
+	if err := s.ensureAgentSchema(ctx); err != nil {
+		return err
+	}
 	// Databases created by the first release carry an inline UNIQUE constraint that
 	// cannot be dropped in place; rebuild the table once, copying existing rows.
 	if err := s.rebuildAssetsIfFullUnique(ctx); err != nil {
@@ -162,6 +169,7 @@ CREATE TABLE IF NOT EXISTS audit_events (
 	}
 	// Ledger columns were added later; ALTER keeps older databases working.
 	ledgerColumns := []struct{ name, ddl string }{
+		{"rdp_port", "INTEGER NOT NULL DEFAULT 3389"},
 		{"asset_type", "TEXT NOT NULL DEFAULT 'linux_host'"},
 		{"serial_number", "TEXT NOT NULL DEFAULT ''"},
 		{"mac_address", "TEXT NOT NULL DEFAULT ''"},
@@ -180,7 +188,10 @@ CREATE TABLE IF NOT EXISTS audit_events (
 	}
 	// Only active assets must have a unique code, so a deleted code can be reused.
 	_, err = s.db.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_assets_code_active ON assets(asset_code) WHERE deleted_at IS NULL`)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.migrateAuth(ctx)
 }
 
 func (s *Store) rebuildAssetsIfFullUnique(ctx context.Context) error {
@@ -214,7 +225,7 @@ func (s *Store) rebuildAssetsIfFullUnique(ctx context.Context) error {
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	all := []string{"id", "asset_code", "name", "address", "ssh_port", "os_family", "os_name", "owner", "department", "environment", "status", "credential_id", "host_key", "host_key_fingerprint", "version", "created_at", "updated_at", "deleted_at", "asset_type", "serial_number", "mac_address", "location", "price_cents", "purchased_at", "warranty_until", "supplier", "purchase_order"}
+	all := []string{"id", "asset_code", "name", "address", "ssh_port", "rdp_port", "os_family", "os_name", "owner", "department", "environment", "status", "credential_id", "host_key", "host_key_fingerprint", "version", "created_at", "updated_at", "deleted_at", "asset_type", "serial_number", "mac_address", "location", "price_cents", "purchased_at", "warranty_until", "supplier", "purchase_order"}
 	copied := make([]string, 0, len(all))
 	for _, column := range all {
 		if existing[column] {
@@ -288,6 +299,15 @@ func validateCreate(in *CreateAsset) error {
 	if in.SSHPort < 1 || in.SSHPort > 65535 {
 		return errors.New("SSH 端口必须在 1-65535 之间")
 	}
+	if in.RDPPort == 0 {
+		in.RDPPort = 3389
+	}
+	if in.RDPPort < 1 || in.RDPPort > 65535 {
+		return errors.New("RDP 端口必须在 1-65535 之间")
+	}
+	if IsWindowsOS(in.AssetType, in.OSName) && in.AuthType != sshauth.KindPassword {
+		return errors.New("Windows RDP 资产只支持密码凭据；私钥不能用于远程桌面登录")
+	}
 	if err := validateCredential(in); err != nil {
 		return err
 	}
@@ -295,6 +315,29 @@ func validateCreate(in *CreateAsset) error {
 		in.Environment = "production"
 	}
 	return nil
+}
+
+// IsWindowsOS reports whether an asset type or OS name describes a Windows
+// host. Windows assets are managed with RDP instead of SSH, so they must not be
+// queued for SSH host-key scans or metrics collection.
+func IsWindowsOS(assetType, osName string) bool {
+	return strings.EqualFold(strings.TrimSpace(assetType), "windows_host") ||
+		strings.Contains(strings.ToLower(osName), "windows")
+}
+
+// NormalizeOS derives the stored os_family/asset_type pair. A host whose OS
+// name says Windows is always stored as windows_host, otherwise it would be
+// collected over SSH and fail every interval.
+func NormalizeOS(assetType, osName string) (family, kind string) {
+	if IsWindowsOS(assetType, osName) {
+		return "windows", "windows_host"
+	}
+	return "linux", defaultString(strings.TrimSpace(assetType), "linux_host")
+}
+
+// IsWindows reports whether RDP is this asset's management protocol.
+func (a Asset) IsWindows() bool {
+	return a.OSFamily == "windows" || IsWindowsOS(a.AssetType, a.OSName)
 }
 
 func (s *Store) CreateAsset(ctx context.Context, in CreateAsset) (Asset, error) {
@@ -317,7 +360,8 @@ func (s *Store) CreateAsset(ctx context.Context, in CreateAsset) (Asset, error) 
 	if _, err = tx.ExecContext(ctx, `INSERT INTO credentials(id,username,auth_type,nonce,ciphertext,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`, credID, in.Username, in.AuthType, nonce, ciphertext, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
 		return Asset{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO assets(id,asset_code,name,address,ssh_port,os_name,owner,department,environment,status,credential_id,created_at,updated_at,asset_type,serial_number,mac_address,location,price_cents,purchased_at,warranty_until,supplier,purchase_order) VALUES(?,?,?,?,?,?,?,?,?,'unknown',?,?,?,?,?,?,?,?,?,?,?,?)`, assetID, in.AssetCode, in.Name, in.Address, in.SSHPort, in.OSName, in.Owner, in.Department, in.Environment, credID, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), defaultString(in.AssetType, "linux_host"), in.SerialNumber, in.MACAddress, in.Location, in.PriceCents, in.PurchasedAt, in.WarrantyUntil, in.Supplier, in.PurchaseOrder); err != nil {
+	osFamily, assetType := NormalizeOS(in.AssetType, in.OSName)
+	if _, err = tx.ExecContext(ctx, `INSERT INTO assets(id,asset_code,name,address,ssh_port,rdp_port,os_family,os_name,owner,department,environment,status,credential_id,created_at,updated_at,asset_type,serial_number,mac_address,location,price_cents,purchased_at,warranty_until,supplier,purchase_order) VALUES(?,?,?,?,?,?,?,?,?,?,?,'unknown',?,?,?,?,?,?,?,?,?,?,?,?)`, assetID, in.AssetCode, in.Name, in.Address, in.SSHPort, in.RDPPort, osFamily, in.OSName, in.Owner, in.Department, in.Environment, credID, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), assetType, in.SerialNumber, in.MACAddress, in.Location, in.PriceCents, in.PurchasedAt, in.WarrantyUntil, in.Supplier, in.PurchaseOrder); err != nil {
 		return Asset{}, err
 	}
 	if err = insertAudit(ctx, tx, "asset.create", "asset", assetID, "success", map[string]any{"asset_code": in.AssetCode, "address": in.Address, "port": in.SSHPort}); err != nil {
@@ -332,7 +376,7 @@ func (s *Store) CreateAsset(ctx context.Context, in CreateAsset) (Asset, error) 
 func scanAsset(rows interface{ Scan(...any) error }) (Asset, error) {
 	var a Asset
 	var created, updated string
-	err := rows.Scan(&a.ID, &a.AssetCode, &a.Name, &a.Address, &a.SSHPort, &a.OSFamily, &a.OSName, &a.Owner, &a.Department, &a.Environment, &a.Status, &a.CredentialID, &a.Username, &a.AuthType, &a.HostKey, &a.HostKeyFingerprint, &a.Version, &created, &updated, &a.AssetType, &a.SerialNumber, &a.MACAddress, &a.Location, &a.PriceCents, &a.PurchasedAt, &a.WarrantyUntil, &a.Supplier, &a.PurchaseOrder)
+	err := rows.Scan(&a.ID, &a.AssetCode, &a.Name, &a.Address, &a.SSHPort, &a.RDPPort, &a.OSFamily, &a.OSName, &a.Owner, &a.Department, &a.Environment, &a.Status, &a.CredentialID, &a.Username, &a.AuthType, &a.HostKey, &a.HostKeyFingerprint, &a.Version, &created, &updated, &a.AssetType, &a.SerialNumber, &a.MACAddress, &a.Location, &a.PriceCents, &a.PurchasedAt, &a.WarrantyUntil, &a.Supplier, &a.PurchaseOrder)
 	if err != nil {
 		return Asset{}, err
 	}
@@ -346,7 +390,7 @@ func scanAsset(rows interface{ Scan(...any) error }) (Asset, error) {
 	return a, nil
 }
 
-const assetSelect = `SELECT a.id,a.asset_code,a.name,a.address,a.ssh_port,a.os_family,a.os_name,a.owner,a.department,a.environment,a.status,a.credential_id,c.username,c.auth_type,a.host_key,a.host_key_fingerprint,a.version,a.created_at,a.updated_at,a.asset_type,a.serial_number,a.mac_address,a.location,a.price_cents,a.purchased_at,a.warranty_until,a.supplier,a.purchase_order FROM assets a JOIN credentials c ON c.id=a.credential_id WHERE a.deleted_at IS NULL`
+const assetSelect = `SELECT a.id,a.asset_code,a.name,a.address,a.ssh_port,a.rdp_port,a.os_family,a.os_name,a.owner,a.department,a.environment,a.status,a.credential_id,c.username,c.auth_type,a.host_key,a.host_key_fingerprint,a.version,a.created_at,a.updated_at,a.asset_type,a.serial_number,a.mac_address,a.location,a.price_cents,a.purchased_at,a.warranty_until,a.supplier,a.purchase_order FROM assets a JOIN credentials c ON c.id=a.credential_id WHERE a.deleted_at IS NULL`
 
 func defaultString(value, fallback string) string {
 	if strings.TrimSpace(value) == "" {
@@ -482,6 +526,13 @@ func (s *Store) UpdateAsset(ctx context.Context, id string, patch AssetPatch) (A
 		}
 		set("ssh_port", port, "ssh_port")
 	}
+	if patch.RDPPort != nil {
+		port := *patch.RDPPort
+		if port < 1 || port > 65535 {
+			return Asset{}, errors.New("RDP 端口必须在 1-65535 之间")
+		}
+		set("rdp_port", port, "rdp_port")
+	}
 	if patch.OSName != nil {
 		set("os_name", strings.TrimSpace(*patch.OSName), "os_name")
 	}
@@ -495,7 +546,12 @@ func (s *Store) UpdateAsset(ctx context.Context, id string, patch AssetPatch) (A
 		set("environment", strings.TrimSpace(*patch.Environment), "environment")
 	}
 	if patch.AssetType != nil {
-		set("asset_type", defaultString(strings.TrimSpace(*patch.AssetType), "linux_host"), "asset_type")
+		kind := defaultString(strings.TrimSpace(*patch.AssetType), "linux_host")
+		family, normalized := NormalizeOS(kind, current.OSName)
+		set("asset_type", normalized, "asset_type")
+		if family != current.OSFamily {
+			set("os_family", family, "os_family")
+		}
 	}
 	if patch.SerialNumber != nil {
 		set("serial_number", strings.TrimSpace(*patch.SerialNumber), "serial_number")
@@ -657,7 +713,8 @@ func (s *Store) UpdateSession(ctx context.Context, id, status, reason string, in
 
 func insertAudit(ctx context.Context, tx *sql.Tx, action, objectType, objectID, result string, metadata any) error {
 	raw, _ := json.Marshal(metadata)
-	_, err := tx.ExecContext(ctx, `INSERT INTO audit_events(id,occurred_at,action,object_type,object_id,result,metadata_json) VALUES(?,?,?,?,?,?,?)`, uuid.NewString(), time.Now().UTC().Format(time.RFC3339Nano), action, objectType, objectID, result, string(raw))
+	_, err := tx.ExecContext(ctx, `INSERT INTO audit_events(id,occurred_at,action,object_type,object_id,result,metadata_json,actor_user_id) VALUES(?,?,?,?,?,?,?,?)`,
+		uuid.NewString(), time.Now().UTC().Format(time.RFC3339Nano), action, objectType, objectID, result, string(raw), ActorFrom(ctx))
 	return err
 }
 func (s *Store) Audit(ctx context.Context, action, objectType, objectID, result string, metadata any) {

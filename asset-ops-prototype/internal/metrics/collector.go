@@ -273,6 +273,11 @@ func (c *Collector) sweep() {
 	now := c.now()
 	var wg sync.WaitGroup
 	for _, a := range assets {
+		// Windows hosts are managed over RDP, not SSH; queuing them here would
+		// turn every sweep into a connection failure with no actionable cause.
+		if a.IsWindows() {
+			continue
+		}
 		if a.AssetType != "" && a.AssetType != "linux_host" {
 			continue
 		}

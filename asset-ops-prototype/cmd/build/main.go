@@ -17,7 +17,7 @@ func main() {
 	// Data layer first: modules below subscribe to window.QiyunAPI/HostMetrics at
 	// load time, and optional chaining would silently drop the subscription if
 	// they loaded before it existed (that is how "主机与远程" once showed 0 hosts).
-	js := join(base, []string{"core.js", "terminal-gateway.js", "host-metrics.js", "business.js", "infra.js", "terminal-workspace.js", "transfer-ui.js", "platform.js", "monitoring-model.js", "monitoring.js", "admin-shell.js"})
+	js := join(base, []string{"core.js", "auth-ui.js", "terminal-gateway.js", "host-metrics.js", "business.js", "infra.js", "terminal-workspace.js", "transfer-ui.js", "platform.js", "monitoring-model.js", "monitoring.js", "agent-ui.js", "admin-shell.js"})
 	fragment := "<style>\n" + css + "\n</style>\n" + shell + "\n<script>\n" + js + "\nAssetDemo.init();\n</script>\n"
 	// trzsz is intentionally not loaded: file transfer now goes through the Go
 	// SFTP chunked API (transfer-ui.js). The vendored bundle stays on disk so the

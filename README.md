@@ -35,8 +35,10 @@ go build -o qiyun.exe ./cmd/qiyun
 
 ## 能力
 
-- **资产增删改查**：`POST/GET/PATCH/DELETE /api/v1/assets`，支持按关键字、部门、环境、指纹状态过滤。
+- **集中式多账号与权限**：中心模式支持本地账号登录、内置角色（管理员/运维/审计/只读）、资产级 `can_connect`/`can_edit` 授权、CSRF 和审计操作人；`QIYUN_AUTH_MODE=on` 启用，单机回环模式默认不要求登录。
+- **资产增删改查**：`POST/GET/PATCH/DELETE /api/v1/assets`，支持按关键字、部门、环境、指纹状态过滤；「主机与远程」页可直接搜索、编辑、删除真实资产。
 - **真实 SSH 终端**：WebSocket + PTY 二进制帧，xterm.js 渲染，多标签与横/纵/网格分屏，同步输入。
+- **Windows RDP**：Windows 资产登记为 `windows_host`，从「主机与远程」调用操作者本机 `mstsc`：临时凭据 + 签名 `.rdp` + 延迟清理，启动与失败写入审计。中心模式通过 90 秒一次性票据 + 本机瘦连接器（`qiyun-connector.exe`）在用户电脑启动 `mstsc`，浏览器拿不到 Windows 密码；配置 Guacamole 后也可在浏览器中直接打开远程桌面。
 - **大文件传输**：独立于终端的 Go SFTP 分块通道，支持断点续传与覆盖，不依赖远端 `trz`/`tsz`。
 - **主机指纹**：新增资产后扫描、人工核对 SHA-256、批准后固定；改 IP 或端口会自动作废指纹并要求重新核验；密钥变化返回 `HOST_KEY_MISMATCH`。
 - **连接诊断**：凭据读取 → 私钥解析 → 地址解析 → TCP → 主机指纹 → SSH 认证 → 命令执行，逐项给出原因与建议，并显示私钥对应的公钥行便于比对 `authorized_keys`。
@@ -45,8 +47,8 @@ go build -o qiyun.exe ./cmd/qiyun
 
 ## 安全默认
 
-- 默认只监听 `127.0.0.1`；绑定非本机地址且未设置 `QIYUN_ADMIN_TOKEN` 时拒绝启动。
-- 仅允许私网目标（`QIYUN_ALLOWED_CIDRS`，默认 `10/8`、`172.16/12`、`192.168/16`），阻断 loopback 与云 metadata 地址。
+- 默认只监听 `127.0.0.1`；单机回环模式默认不需要登录。绑定非本机地址时必须启用中心认证（`QIYUN_AUTH_MODE=on`，首次启动提供 `QIYUN_ADMIN_PASSWORD`），否则拒绝启动。
+- SSH/SFTP 仅允许私网目标（`QIYUN_ALLOWED_CIDRS`，默认 `10/8`、`172.16/12`、`192.168/16`），阻断 loopback 与云 metadata 地址；RDP 启动只接受回环调用者，目标地址来自已登记资产。
 - 终端 WebSocket 使用 60 秒单次票据，长期令牌不进 URL。
 - 连接失败一律失败收敛，不回退到演示会话。
 

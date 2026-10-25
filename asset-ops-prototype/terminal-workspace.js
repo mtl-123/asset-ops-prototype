@@ -25,7 +25,9 @@
       }
     }
   };
-  function linuxHosts() { return api?.getAssets?.() || []; }
+  // This workspace is SSH-only. Windows assets are managed through RDP, so they
+  // must not appear here as un-verifiable hosts.
+  function linuxHosts() { return (api?.getAssets?.() || []).filter(h => h.type !== 'Windows' && h.assetType !== 'windows_host'); }
   function getHost(id) { return linuxHosts().find(h => h.id === id); }
   const reachability = new Map();
   let diagnosticBusy = false;
@@ -208,18 +210,18 @@
   }
   function assetForm() {
     formAuth = 'password';
-    A.modal('添加 Linux 资产', `<form id="terminal-asset-form"><div class="form-grid">
+    A.modal('添加远程资产', `<form id="terminal-asset-form"><div class="form-grid">
       <div class="field"><label for="ta-code">资产编码 *</label><input id="ta-code" required maxlength="60" placeholder="例如 SRV-PROD-01"></div>
       <div class="field"><label for="ta-name">资产名称 *</label><input id="ta-name" required maxlength="80" placeholder="例如 生产应用服务器"></div>
       <div class="field"><label for="ta-address">IP 或主机名 *</label><input id="ta-address" required maxlength="255" placeholder="10.20.30.21"></div>
-      <div class="field"><label for="ta-port">SSH 端口 *</label><input id="ta-port" type="number" min="1" max="65535" value="22" required></div>
+      <div class="field"><label for="ta-port" id="ta-port-label">SSH 端口 *</label><input id="ta-port" type="number" min="1" max="65535" value="22" required></div>
       <div class="field"><label for="ta-department">部门</label><input id="ta-department" maxlength="60"></div>
       <div class="field"><label for="ta-environment">环境</label><select id="ta-environment"><option value="production">生产环境</option><option value="staging">预发布环境</option><option value="testing">测试环境</option><option value="development">开发环境</option></select></div>
       <div class="field"><label for="ta-owner">负责人</label><input id="ta-owner" maxlength="60"></div>
-      <div class="field"><label for="ta-os">操作系统</label><input id="ta-os" maxlength="80" value="Linux"></div>
-      <div class="field"><label for="ta-username">SSH 用户名 *</label><input id="ta-username" required maxlength="64" autocomplete="username" placeholder="例如 root 或 ops"></div>
+      <div class="field"><label for="ta-os">操作系统</label><select id="ta-os"><option value="Linux">Linux（SSH / SFTP）</option><option value="Windows">Windows（RDP 远程桌面）</option></select></div>
+      <div class="field"><label for="ta-username" id="ta-username-label">SSH 用户名 *</label><input id="ta-username" required maxlength="64" autocomplete="username" placeholder="例如 root 或 ops"></div>
       <div class="field"><label>认证方式 *</label>${authSwitch()}</div>
-    </div><div data-auth-block="password" ${formAuth === 'password' ? '' : 'hidden'}><div class="field"><label for="ta-password">SSH 密码 *</label><div class="terminal-secret-row"><input id="ta-password" type="password" autocomplete="current-password" placeholder="输入该账号的 SSH 登录密码"><button type="button" class="terminal-reveal" data-action="terminal-toggle-password" data-target="ta-password" aria-label="显示或隐藏密码">显示</button></div></div></div><div data-auth-block="private_key" hidden><div style="height:14px"></div><div class="field"><label for="ta-keyfile">从本地选择私钥文件</label><div class="terminal-file-row"><input id="ta-keyfile" type="file" accept=".pem,.key,.ppk,.txt,id_rsa,id_ed25519,text/plain"><span id="ta-key-status" class="terminal-key-status">支持 OpenSSH / PEM，.ppk 需先转换</span></div><p class="terminal-hint">只读取你选择的文件内容填入下方文本框，不做其他上传。</p></div><div class="field"><label for="ta-secret">或直接粘贴私钥内容 *</label><textarea id="ta-secret" rows="5" spellcheck="false" autocomplete="off" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea></div><div class="field"><label for="ta-passphrase">私钥口令（私钥已加密时必填）</label><input id="ta-passphrase" type="password" autocomplete="new-password"></div></div><div id="terminal-asset-error" class="text-red small" role="alert"></div></form><div class="notice">凭据只提交给同源 Go 服务，并以 AES-GCM 加密保存。保存后会先扫描 SSH 主机指纹，核验通过才可连接；连接失败可在资产行点击“◎”查看逐步诊断原因。</div>`, A.button('取消', 'close-modal') + A.button('保存并扫描指纹', 'terminal-save-asset', true));
+    </div><div data-auth-block="password" ${formAuth === 'password' ? '' : 'hidden'}><div class="field"><label for="ta-password" id="ta-password-label">SSH 密码 *</label><div class="terminal-secret-row"><input id="ta-password" type="password" autocomplete="current-password" placeholder="输入该账号的登录密码"><button type="button" class="terminal-reveal" data-action="terminal-toggle-password" data-target="ta-password" aria-label="显示或隐藏密码">显示</button></div></div></div><div data-auth-block="private_key" hidden><div style="height:14px"></div><div class="field"><label for="ta-keyfile">从本地选择私钥文件</label><div class="terminal-file-row"><input id="ta-keyfile" type="file" accept=".pem,.key,.ppk,.txt,id_rsa,id_ed25519,text/plain"><span id="ta-key-status" class="terminal-key-status">OpenSSH / PEM；.ppk 需先转换</span></div><p class="terminal-hint">只读取你选择的文件内容填入下方文本框，不做其他上传。</p></div><div class="field"><label for="ta-secret">或直接粘贴私钥内容 *</label><textarea id="ta-secret" rows="5" spellcheck="false" autocomplete="off" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea></div><div class="field"><label for="ta-passphrase">私钥口令（私钥已加密时必填）</label><input id="ta-passphrase" type="password" autocomplete="new-password"></div></div><div id="terminal-asset-error" class="text-red small" role="alert"></div></form><div class="notice">凭据只提交给同源 Go 服务，并以 AES-GCM 加密保存。选择 Linux 时保存后会先扫描 SSH 主机指纹，核验通过才可连接；选择 Windows 时保存后可直接在“主机与远程”发起 RDP，不扫描 SSH 指纹。</div>`, A.button('取消', 'close-modal') + A.button('保存资产', 'terminal-save-asset', true));
   }
   function credentialForm(asset) {
     formAuth = asset.authType || 'password';
@@ -264,17 +266,34 @@
   async function saveAsset() {
     const form = A.root.querySelector('#terminal-asset-form'); if (!form?.reportValidity()) return;
     const cred = credentialPayload('ta');
-    if (!cred.username) return setFormError('terminal-asset', '请填写 SSH 用户名');
-    if (formAuth === 'private_key') {
+    const osName = formValue('ta-os') || 'Linux';
+    const windows = /windows/i.test(osName);
+    if (!cred.username) return setFormError('terminal-asset', windows ? '请填写 Windows 账号' : '请填写 SSH 用户名');
+    if (windows && formAuth !== 'password') return setFormError('terminal-asset', 'Windows RDP 资产只支持密码凭据，私钥不能用于远程桌面登录。');
+    if (!windows && formAuth === 'private_key') {
       const detected = detectPrivateKey(cred.secret);
       if (!detected.ok) return setFormError('terminal-asset', detected.message);
     }
-    setFormError('terminal-asset', '正在保存资产并扫描 SSH 指纹...', 'info');
+    const port = Number(formValue('ta-port'));
+    if (!Number.isInteger(port) || port < 1 || port > 65535) return setFormError('terminal-asset', '端口必须在 1-65535 之间。');
+    setFormError('terminal-asset', windows ? '正在保存 Windows 资产…' : '正在保存资产并扫描 SSH 指纹...', 'info');
     let asset;
     try {
-      asset = await api.createAsset({ asset_code: formValue('ta-code'), name: formValue('ta-name'), address: formValue('ta-address'), ssh_port: Number(formValue('ta-port')), department: formValue('ta-department'), environment: formValue('ta-environment'), owner: formValue('ta-owner'), os_name: formValue('ta-os'), ...cred });
+      asset = await api.createAsset({
+        asset_code: formValue('ta-code'), name: formValue('ta-name'), address: formValue('ta-address'),
+        ssh_port: windows ? 22 : port, rdp_port: windows ? port : 3389,
+        asset_type: windows ? 'windows_host' : 'linux_host',
+        department: formValue('ta-department'), environment: formValue('ta-environment'),
+        owner: formValue('ta-owner'), os_name: osName, ...cred
+      });
       await api.refreshAssets();
     } catch (error) { return setFormError('terminal-asset', error.message); }
+    if (windows) {
+      A.closeModal();
+      A.toast('Windows 资产已保存。请在“主机与远程”中打开 RDP 远程桌面。');
+      if (A.state.page === 'terminal') render();
+      return;
+    }
     try {
       const scan = await api.scanHostKey(asset.id); fingerprintModal(asset, scan);
     } catch (error) { setFormError('terminal-asset', `资产已保存，但 SSH 指纹扫描失败：${error.message}${error.hint ? `（建议：${error.hint}）` : ''}`); }
@@ -338,10 +357,34 @@
     diagnosticModal(report, { assetID: id });
     if (report.ok) A.toast('SSH 指纹已批准，认证与命令执行均已通过。');
   }
-  function switchAuthType(el) {
-    formAuth = el.dataset.id === 'private_key' ? 'private_key' : 'password';
+  function setAuthType(id) {
+    formAuth = id === 'private_key' ? 'private_key' : 'password';
     A.root.querySelectorAll('[data-auth-block]').forEach(block => { block.hidden = block.dataset.authBlock !== formAuth; });
     A.root.querySelectorAll('[data-action="terminal-auth-type"]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.id === formAuth)));
+  }
+  function switchAuthType(el) { setAuthType(el.dataset.id); }
+  // Windows assets use RDP with a password; private keys are not a valid RDP
+  // credential. Keep labels, default port and auth block in sync with the OS.
+  function applyAssetOS(value) {
+    const windows = /windows/i.test(String(value || ''));
+    const port = A.root.querySelector('#ta-port');
+    const portLabel = A.root.querySelector('#ta-port-label');
+    const userLabel = A.root.querySelector('#ta-username-label');
+    const userInput = A.root.querySelector('#ta-username');
+    const passwordLabel = A.root.querySelector('#ta-password-label');
+    if (portLabel) portLabel.textContent = windows ? 'RDP 端口 *' : 'SSH 端口 *';
+    if (port && (port.value === '22' || port.value === '3389')) port.value = windows ? '3389' : '22';
+    if (userLabel) userLabel.textContent = windows ? 'Windows 账号 *' : 'SSH 用户名 *';
+    if (userInput) userInput.placeholder = windows ? 'DOMAIN\\user 或 user@domain' : '例如 root 或 ops';
+    if (passwordLabel) passwordLabel.textContent = windows ? '登录密码 *' : 'SSH 密码 *';
+    if (windows) {
+      setAuthType('password');
+      const keyButton = A.root.querySelector('[data-action="terminal-auth-type"][data-id="private_key"]');
+      if (keyButton) keyButton.hidden = true;
+    } else {
+      const keyButton = A.root.querySelector('[data-action="terminal-auth-type"][data-id="private_key"]');
+      if (keyButton) keyButton.hidden = false;
+    }
   }
   function togglePassword(el) {
     const input = A.root.querySelector('#' + el.dataset.target); if (!input) return;
@@ -568,7 +611,8 @@
       if (registered) openHost(registered.id); else A.toast('该主机尚未登记到真实资产库，请先在 Linux 终端中添加并核验指纹。');
       return;
     }
-    A.toast('未配置真实 Windows RDP 网关，连接已拒绝。');
+    if (host?.type === 'Windows') return A.infrastructure?.openRemote?.(host.id);
+    A.toast('目标主机类型未知，无法选择连接方式。');
   };
   Object.assign(A.actions, {
     'terminal-copy': copySelection,
@@ -606,6 +650,7 @@
     A.root.addEventListener('change', async event => {
       const input = event.target;
       if (input?.type === 'file' && /keyfile$/.test(input.id || '')) await loadKeyFile(input);
+      if (input?.id === 'ta-os') applyAssetOS(input.value);
       if (input?.id === 'ta-secret' || input?.id === 'tc-secret') { /* typed content is validated on submit */ }
     });
     A.root.addEventListener('input', event => {

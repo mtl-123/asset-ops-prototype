@@ -2,7 +2,8 @@ package main
 
 import (
 	"context"
-	"crypto/subtle"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -10,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path"
@@ -18,7 +20,9 @@ import (
 	"syscall"
 	"time"
 
+	"qiyun-asset-ops/internal/guacamole"
 	"qiyun-asset-ops/internal/metrics"
+	"qiyun-asset-ops/internal/rdp"
 	"qiyun-asset-ops/internal/secretbox"
 	"qiyun-asset-ops/internal/sshgateway"
 	"qiyun-asset-ops/internal/store"
@@ -26,12 +30,18 @@ import (
 )
 
 type app struct {
-	store    *store.Store
-	ssh      *sshgateway.Manager
-	transfer *transfer.Manager
-	metrics  *metrics.Collector
-	token    string
-	webRoot  string
+	store       *store.Store
+	ssh         *sshgateway.Manager
+	transfer    *transfer.Manager
+	metrics     *metrics.Collector
+	rdp         *rdp.Manager
+	guac        *guacamole.Client
+	token       string
+	agentToken  string
+	webRoot     string
+	authEnabled bool
+	sessionTTL  time.Duration
+	limiter     *loginLimiter
 }
 
 type problem struct {
@@ -53,11 +63,25 @@ func main() {
 	if err != nil {
 		fatal("invalid listen address", err)
 	}
-	if token == "" && !isLoopbackHost(host) {
-		fatal("refusing unauthenticated non-loopback listener", errors.New("set QIYUN_ADMIN_TOKEN or bind to 127.0.0.1"))
-	}
 	if err = os.MkdirAll(*dataDir, 0o700); err != nil {
 		fatal("create data directory", err)
+	}
+	agentToken := strings.TrimSpace(os.Getenv("QIYUN_AGENT_TOKEN"))
+	agentTokenPath := filepath.Join(*dataDir, "agent.token")
+	if agentToken == "" {
+		if raw, readErr := os.ReadFile(agentTokenPath); readErr == nil {
+			agentToken = strings.TrimSpace(string(raw))
+		}
+	}
+	if agentToken == "" {
+		generated, tokenErr := newAgentToken()
+		if tokenErr != nil {
+			fatal("generate agent token", tokenErr)
+		}
+		if writeErr := os.WriteFile(agentTokenPath, []byte(generated+"\n"), 0o600); writeErr != nil {
+			fatal("write agent token", writeErr)
+		}
+		agentToken = generated
 	}
 	box, err := secretbox.LoadOrCreate(filepath.Join(*dataDir, "master.key"))
 	if err != nil {
@@ -68,6 +92,28 @@ func main() {
 		fatal("open database", err)
 	}
 	defer st.Close()
+	authMode := strings.ToLower(strings.TrimSpace(env("QIYUN_AUTH_MODE", "auto")))
+	if authMode != "auto" && authMode != "on" && authMode != "off" {
+		fatal("invalid QIYUN_AUTH_MODE", errors.New("use auto, on or off"))
+	}
+	userCount, err := st.CountUsers(context.Background())
+	if err != nil {
+		fatal("count users", err)
+	}
+	loopback := isLoopbackHost(host)
+	authEnabled := authMode == "on" || (authMode == "auto" && (!loopback || userCount > 0))
+	if authMode == "off" && !loopback {
+		fatal("refusing unauthenticated non-loopback listener", errors.New("set QIYUN_AUTH_MODE=on and QIYUN_ADMIN_PASSWORD"))
+	}
+	if authEnabled && userCount == 0 {
+		if err := bootstrapAdmin(context.Background(), st, loopback); err != nil {
+			fatal("bootstrap administrator", err)
+		}
+		userCount = 1
+	}
+	if !authEnabled && !loopback {
+		fatal("refusing unauthenticated non-loopback listener", errors.New("enable login with QIYUN_AUTH_MODE=on"))
+	}
 	cidrs := splitEnv("QIYUN_ALLOWED_CIDRS")
 	origins := splitEnv("QIYUN_ALLOWED_ORIGINS")
 	if len(origins) == 0 {
@@ -77,7 +123,19 @@ func main() {
 	if err != nil {
 		fatal("configure SSH gateway", err)
 	}
-	a := &app{store: st, ssh: gw, token: token, webRoot: *webRoot}
+	var guacClient *guacamole.Client
+	if raw := strings.TrimSpace(os.Getenv("QIYUN_GUACAMOLE_URL")); raw != "" {
+		guacClient, err = guacamole.New(raw, env("QIYUN_GUACAMOLE_USER", ""), env("QIYUN_GUACAMOLE_PASSWORD", ""), env("QIYUN_GUACAMOLE_DATA_SOURCE", ""))
+		if err != nil {
+			fatal("configure Guacamole gateway", err)
+		}
+	}
+	a := &app{store: st, ssh: gw, guac: guacClient, token: token, agentToken: agentToken, webRoot: *webRoot, authEnabled: authEnabled, sessionTTL: 12 * time.Hour, limiter: newLoginLimiter()}
+	rm, err := rdp.New(st, st, rdp.Options{DataDir: *dataDir})
+	if err != nil {
+		fatal("configure RDP launcher", err)
+	}
+	a.rdp = rm
 	tm, err := transfer.New(st, transfer.SFTPFactory(gw), st, transfer.Options{DataDir: *dataDir})
 	if err != nil {
 		fatal("configure transfer manager", err)
@@ -94,7 +152,7 @@ func main() {
 	defer mc.Close()
 	srv := &http.Server{Addr: *addr, Handler: a.routes(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 1 << 20}
 	go func() {
-		slog.Info("qiyun Go service started", "address", "http://"+*addr, "data", *dataDir, "auth_enabled", token != "")
+		slog.Info("qiyun Go service started", "address", "http://"+*addr, "data", *dataDir, "auth_enabled", authEnabled, "users", userCount, "web_rdp", guacClient != nil, "agent_token_file", agentTokenPath)
 		if e := srv.ListenAndServe(); e != nil && !errors.Is(e, http.ErrServerClosed) {
 			fatal("serve", e)
 		}
@@ -112,20 +170,55 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"status": "ok", "runtime": "go", "time": time.Now().UTC()})
 	})
-	mux.Handle("GET /api/v1/assets", a.auth(http.HandlerFunc(a.listAssets)))
-	mux.Handle("POST /api/v1/assets", a.auth(http.HandlerFunc(a.createAsset)))
-	mux.Handle("GET /api/v1/assets/{id}", a.auth(http.HandlerFunc(a.getAsset)))
-	mux.Handle("PATCH /api/v1/assets/{id}", a.auth(http.HandlerFunc(a.updateAsset)))
-	mux.Handle("DELETE /api/v1/assets/{id}", a.auth(http.HandlerFunc(a.deleteAsset)))
-	mux.Handle("POST /api/v1/assets/{id}/host-key/scan", a.auth(http.HandlerFunc(a.scanHostKey)))
-	mux.Handle("POST /api/v1/assets/{id}/host-key/approve", a.auth(http.HandlerFunc(a.approveHostKey)))
-	mux.Handle("POST /api/v1/assets/{id}/test", a.auth(http.HandlerFunc(a.testAsset)))
-	mux.Handle("POST /api/v1/assets/{id}/diagnose", a.auth(http.HandlerFunc(a.diagnoseAsset)))
-	mux.Handle("PUT /api/v1/assets/{id}/credential", a.auth(http.HandlerFunc(a.updateCredential)))
-	mux.Handle("POST /api/v1/terminal-sessions", a.auth(http.HandlerFunc(a.createTerminalSession)))
-	mux.Handle("GET /api/v1/terminal-sessions/{id}/ws", http.HandlerFunc(a.ssh.ServeWS))
-	transfer.NewHandler(a.transfer).Register(mux, a.auth)
-	metrics.NewHandler(a.metrics).Register(mux, a.auth)
+	mux.HandleFunc("POST /api/v1/auth/login", a.authLogin)
+	mux.HandleFunc("GET /api/v1/auth/me", a.authMe)
+	mux.Handle("POST /api/v1/auth/logout", a.auth(http.HandlerFunc(a.authLogout)))
+	mux.Handle("GET /api/v1/permissions", a.auth(http.HandlerFunc(a.listPermissions)))
+	mux.Handle("GET /api/v1/audit", a.permit("audit.read", http.HandlerFunc(a.listAuditEvents)))
+	mux.Handle("GET /api/v1/users", a.adminOnly(http.HandlerFunc(a.listUsers)))
+	mux.Handle("POST /api/v1/users", a.adminOnly(http.HandlerFunc(a.createUser)))
+	mux.Handle("PATCH /api/v1/users/{id}", a.adminOnly(http.HandlerFunc(a.updateUser)))
+	mux.Handle("DELETE /api/v1/users/{id}", a.adminOnly(http.HandlerFunc(a.disableUser)))
+	mux.Handle("PUT /api/v1/users/{id}/password", a.adminOnly(http.HandlerFunc(a.resetUserPassword)))
+	mux.Handle("GET /api/v1/users/{id}/grants", a.adminOnly(http.HandlerFunc(a.listUserGrants)))
+	mux.Handle("GET /api/v1/assets", a.permit("asset.read", http.HandlerFunc(a.listAssets)))
+	mux.Handle("POST /api/v1/assets", a.adminOnly(http.HandlerFunc(a.createAsset)))
+	mux.Handle("GET /api/v1/assets/{id}", a.permit("asset.read", http.HandlerFunc(a.getAsset)))
+	mux.Handle("PATCH /api/v1/assets/{id}", a.permit("asset.write", http.HandlerFunc(a.updateAsset)))
+	mux.Handle("DELETE /api/v1/assets/{id}", a.adminOnly(http.HandlerFunc(a.deleteAsset)))
+	mux.Handle("POST /api/v1/assets/{id}/host-key/scan", a.permit("asset.write", http.HandlerFunc(a.scanHostKey)))
+	mux.Handle("POST /api/v1/assets/{id}/host-key/approve", a.permit("asset.write", http.HandlerFunc(a.approveHostKey)))
+	mux.Handle("POST /api/v1/assets/{id}/test", a.permit("ssh.connect", http.HandlerFunc(a.testAsset)))
+	mux.Handle("POST /api/v1/assets/{id}/diagnose", a.permit("ssh.connect", http.HandlerFunc(a.diagnoseAsset)))
+	mux.Handle("PUT /api/v1/assets/{id}/credential", a.permit("credential.write", http.HandlerFunc(a.updateCredential)))
+	mux.Handle("GET /api/v1/assets/{id}/grants", a.adminOnly(http.HandlerFunc(a.getAssetGrants)))
+	mux.Handle("PUT /api/v1/assets/{id}/grants", a.adminOnly(http.HandlerFunc(a.putAssetGrants)))
+	mux.Handle("POST /api/v1/terminal-sessions", a.permit("ssh.connect", http.HandlerFunc(a.createTerminalSession)))
+	mux.Handle("GET /api/v1/rdp/capabilities", a.auth(http.HandlerFunc(a.rdpCapabilities)))
+	mux.Handle("GET /api/v1/rdp/connector", a.auth(http.HandlerFunc(a.rdpConnectorInfo)))
+	mux.Handle("POST /api/v1/rdp/signing", a.adminOnly(http.HandlerFunc(a.rdpSetupSigning)))
+	mux.Handle("POST /api/v1/assets/{id}/rdp/launch", a.permit("rdp.connect", http.HandlerFunc(a.rdpLaunch)))
+	mux.Handle("POST /api/v1/assets/{id}/rdp/ticket", a.permit("rdp.connect", http.HandlerFunc(a.createRDPTicket)))
+	mux.Handle("POST /api/v1/assets/{id}/web-rdp", a.permit("rdp.connect", http.HandlerFunc(a.webRDP)))
+	mux.HandleFunc("POST /api/v1/rdp/tickets/redeem", a.redeemRDPTicket)
+	mux.HandleFunc("POST /api/v1/agent/report", a.agentReport)
+	mux.Handle("GET /api/v1/agent/hosts", a.permit("asset.read", http.HandlerFunc(a.agentHosts)))
+	mux.Handle("POST /api/v1/agent/hosts", a.permit("asset.write", http.HandlerFunc(a.agentCreateHost)))
+	mux.Handle("PATCH /api/v1/agent/hosts/{id}", a.permit("asset.write", http.HandlerFunc(a.agentUpdateHost)))
+	mux.Handle("DELETE /api/v1/agent/hosts/{id}", a.permit("asset.write", http.HandlerFunc(a.agentDeleteHost)))
+	mux.Handle("POST /api/v1/agent/hosts/bulk-delete", a.permit("asset.write", http.HandlerFunc(a.agentBulkDeleteHosts)))
+	mux.Handle("POST /api/v1/agent/hosts/purge", a.permit("asset.write", http.HandlerFunc(a.agentPurgeHosts)))
+	mux.Handle("GET /api/v1/agent/hosts/{id}", a.permit("asset.read", http.HandlerFunc(a.agentHost)))
+	mux.Handle("GET /api/v1/agent/enrollment", a.adminOnly(http.HandlerFunc(a.agentEnrollment)))
+	mux.Handle("GET /api/v1/terminal-sessions/{id}/ws", a.auth(http.HandlerFunc(a.ssh.ServeWS)))
+	transfer.NewHandler(a.transfer,
+		func(r *http.Request, assetID string) bool { return a.assetVisible(r, assetID) },
+		func(r *http.Request, assetID string) bool { return a.assetConnectable(r, assetID, "ssh.connect") },
+	).Register(mux, a.auth)
+	metrics.NewHandler(a.metrics,
+		func(r *http.Request, assetID string) bool { return a.assetVisible(r, assetID) },
+		func(r *http.Request, assetID string) bool { return a.assetConnectable(r, assetID, "ssh.connect") },
+	).Register(mux, a.auth)
 	mux.Handle("/", securityHeaders(staticHandler(a.webRoot)))
 	return requestLog(mux)
 }
@@ -138,12 +231,13 @@ func (a *app) routes() http.Handler {
 func staticHandler(root string) http.Handler {
 	files := http.FileServer(http.Dir(root))
 	// Subdirectories that are served wholesale.
-	openDirs := map[string]bool{"vendor": true, "assets": true}
-	// Extensions the pages actually load.
+	openDirs := map[string]bool{"vendor": true, "assets": true, "downloads": true}
+	// Extensions the pages actually load. Downloads is a dedicated directory
+	// for the connector package; runtime state is still never served.
 	allowedExt := map[string]bool{
 		".html": true, ".js": true, ".css": true, ".svg": true,
 		".png": true, ".jpg": true, ".jpeg": true, ".ico": true,
-		".woff": true, ".woff2": true,
+		".woff": true, ".woff2": true, ".zip": true,
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requested := path.Clean("/" + r.URL.Path)
@@ -160,24 +254,6 @@ func staticHandler(root string) http.Handler {
 	})
 }
 
-func (a *app) auth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if a.token == "" {
-			next.ServeHTTP(w, r)
-			return
-		}
-		got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if got == "" {
-			got = r.URL.Query().Get("access_token")
-		}
-		if subtle.ConstantTimeCompare([]byte(got), []byte(a.token)) != 1 {
-			writeProblem(w, 401, "UNAUTHORIZED", "需要有效的管理令牌")
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
 func (a *app) listAssets(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	items, err := a.store.SearchAssets(r.Context(), store.AssetFilter{
@@ -191,10 +267,24 @@ func (a *app) listAssets(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
+	if visible := a.visibleAssetIDs(r); visible != nil {
+		filtered := make([]store.Asset, 0, len(items))
+		for _, item := range items {
+			if visible[item.ID] {
+				filtered = append(filtered, item)
+			}
+		}
+		items = filtered
+	}
 	writeJSON(w, 200, map[string]any{"items": items, "count": len(items)})
 }
 func (a *app) getAsset(w http.ResponseWriter, r *http.Request) {
-	item, err := a.store.GetAsset(r.Context(), r.PathValue("id"))
+	assetID := r.PathValue("id")
+	if !a.assetVisible(r, assetID) {
+		writeProblem(w, 404, "NOT_FOUND", "资产不存在或无权访问")
+		return
+	}
+	item, err := a.store.GetAsset(r.Context(), assetID)
 	if err != nil {
 		notFoundOrServer(w, err)
 		return
@@ -202,11 +292,16 @@ func (a *app) getAsset(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, item)
 }
 func (a *app) updateAsset(w http.ResponseWriter, r *http.Request) {
+	assetID := r.PathValue("id")
+	if !a.assetEditable(r, assetID) {
+		writeProblem(w, 404, "NOT_FOUND", "资产不存在或无权修改")
+		return
+	}
 	var patch store.AssetPatch
 	if !decodeJSON(w, r, &patch) {
 		return
 	}
-	item, err := a.store.UpdateAsset(r.Context(), r.PathValue("id"), patch)
+	item, err := a.store.UpdateAsset(r.Context(), assetID, patch)
 	if err != nil {
 		if store.IsNotFound(err) {
 			writeProblem(w, 404, "NOT_FOUND", "资产不存在或已删除")
@@ -242,7 +337,12 @@ func (a *app) deleteAsset(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 func (a *app) scanHostKey(w http.ResponseWriter, r *http.Request) {
-	asset, err := a.store.GetAsset(r.Context(), r.PathValue("id"))
+	assetID := r.PathValue("id")
+	if !a.assetEditable(r, assetID) {
+		writeProblem(w, 404, "NOT_FOUND", "资产不存在或无权扫描")
+		return
+	}
+	asset, err := a.store.GetAsset(r.Context(), assetID)
 	if err != nil {
 		notFoundOrServer(w, err)
 		return
@@ -275,7 +375,12 @@ func (a *app) approveHostKey(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	asset, err := a.store.GetAsset(r.Context(), r.PathValue("id"))
+	assetID := r.PathValue("id")
+	if !a.assetEditable(r, assetID) {
+		writeProblem(w, 404, "NOT_FOUND", "资产不存在或无权核验")
+		return
+	}
+	asset, err := a.store.GetAsset(r.Context(), assetID)
 	if err != nil {
 		notFoundOrServer(w, err)
 		return
@@ -297,7 +402,12 @@ func (a *app) approveHostKey(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, item)
 }
 func (a *app) testAsset(w http.ResponseWriter, r *http.Request) {
-	d, err := a.ssh.Test(r.Context(), r.PathValue("id"))
+	assetID := r.PathValue("id")
+	if !a.assetConnectable(r, assetID, "ssh.connect") {
+		writeProblem(w, 404, "NOT_FOUND", "资产不存在或无权连接")
+		return
+	}
+	d, err := a.ssh.Test(r.Context(), assetID)
 	if err != nil {
 		if d.AssetID == "" {
 			notFoundOrServer(w, err)
@@ -311,7 +421,12 @@ func (a *app) testAsset(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"status": "connected", "diagnostic": d})
 }
 func (a *app) diagnoseAsset(w http.ResponseWriter, r *http.Request) {
-	d, err := a.ssh.Diagnose(r.Context(), r.PathValue("id"))
+	assetID := r.PathValue("id")
+	if !a.assetConnectable(r, assetID, "ssh.connect") {
+		writeProblem(w, 404, "NOT_FOUND", "资产不存在或无权连接")
+		return
+	}
+	d, err := a.ssh.Diagnose(r.Context(), assetID)
 	if err != nil {
 		notFoundOrServer(w, err)
 		return
@@ -324,11 +439,16 @@ func (a *app) diagnoseAsset(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, d)
 }
 func (a *app) updateCredential(w http.ResponseWriter, r *http.Request) {
+	assetID := r.PathValue("id")
+	if !a.assetEditable(r, assetID) {
+		writeProblem(w, 404, "NOT_FOUND", "资产不存在或无权修改凭据")
+		return
+	}
 	var in store.CreateAsset
 	if !decodeJSON(w, r, &in) {
 		return
 	}
-	item, err := a.store.UpdateCredential(r.Context(), r.PathValue("id"), in)
+	item, err := a.store.UpdateCredential(r.Context(), assetID, in)
 	if err != nil {
 		if store.IsNotFound(err) {
 			writeProblem(w, 404, "NOT_FOUND", "资源不存在")
@@ -351,6 +471,16 @@ func (a *app) createTerminalSession(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &body) {
 		return
 	}
+	if !a.assetConnectable(r, body.AssetID, "ssh.connect") {
+		writeProblem(w, 404, "NOT_FOUND", "资产不存在或无权连接")
+		return
+	}
+	// A Windows asset has no SSH service by design; explaining that here is
+	// clearer than letting the WebSocket attempt an SSH handshake and fail.
+	if asset, err := a.store.GetAsset(r.Context(), body.AssetID); err == nil && asset.IsWindows() {
+		writeProblem(w, 409, "RDP_ASSET", "该资产是 Windows 主机，请从“主机与远程”打开 RDP 远程桌面，不支持 SSH 终端")
+		return
+	}
 	t, err := a.ssh.CreateTicketWithSize(body.AssetID, body.Cols, body.Rows)
 	if err != nil {
 		if strings.Contains(err.Error(), "HOST_KEY_UNKNOWN") {
@@ -361,6 +491,86 @@ func (a *app) createTerminalSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 201, map[string]any{"id": t.SessionID, "asset_id": t.AssetID, "ws_url": "/api/v1/terminal-sessions/" + t.SessionID + "/ws", "ws_ticket": t.Value, "expires_at": t.Expires})
+}
+
+// rdpCapabilities reports whether this machine can open mstsc. A remote browser
+// gets available=false instead of a button that would fail on click, because
+// mstsc must open on the operator's own desktop, not on the server's.
+func (a *app) rdpCapabilities(w http.ResponseWriter, r *http.Request) {
+	capability := a.rdp.Capabilities(r.Context())
+	if !isLoopbackRequest(r) {
+		capability.Available = false
+		capability.Error = "RDP 只能从运行本服务的 Windows 电脑通过 http://127.0.0.1:8765 发起"
+	}
+	writeJSON(w, http.StatusOK, capability)
+}
+
+// rdpSetupSigning performs the one-time publisher trust setup. It can show one
+// Windows UAC prompt, so it is a separate explicit action, never part of launch.
+func (a *app) rdpSetupSigning(w http.ResponseWriter, r *http.Request) {
+	if !isLoopbackRequest(r) {
+		writeProblem(w, http.StatusForbidden, "RDP_LOCAL_WINDOWS_ONLY", "RDP 签名配置只能在本机执行")
+		return
+	}
+	if !isSameOriginRequest(r) {
+		writeProblem(w, http.StatusForbidden, "RDP_CROSS_ORIGIN", "拒绝跨站 RDP 签名配置请求")
+		return
+	}
+	status, err := a.rdp.SetupSigning(r.Context())
+	if err != nil {
+		var rdpErr *rdp.RDPError
+		if errors.As(err, &rdpErr) {
+			writeProblem(w, rdpErr.Status, rdpErr.Code, rdpErr.Message)
+		} else {
+			slog.Warn("rdp signing setup failed", "error", err)
+			writeProblem(w, http.StatusBadGateway, "RDP_SIGNING_SETUP_FAILED", "签名初始化失败，请查看服务控制台中的诊断信息。")
+		}
+		return
+	}
+	if !status.Configured {
+		writeProblem(w, http.StatusBadGateway, "RDP_SIGNING_SETUP_FAILED", "签名脚本执行完成，但受信任发布者仍未生效")
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+func (a *app) rdpLaunch(w http.ResponseWriter, r *http.Request) {
+	if !isLoopbackRequest(r) {
+		writeProblem(w, http.StatusForbidden, "RDP_LOCAL_WINDOWS_ONLY", "RDP 只能在运行本服务的 Windows 电脑上发起，请通过 http://127.0.0.1:8765 访问")
+		return
+	}
+	if !isSameOriginRequest(r) {
+		writeProblem(w, http.StatusForbidden, "RDP_CROSS_ORIGIN", "拒绝跨站 RDP 启动请求")
+		return
+	}
+	assetID := r.PathValue("id")
+	if !a.assetConnectable(r, assetID, "rdp.connect") {
+		writeProblem(w, 404, "NOT_FOUND", "资产不存在或无权连接")
+		return
+	}
+	var in rdp.LaunchInput
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	result, err := a.rdp.Launch(r.Context(), assetID, in)
+	if err != nil {
+		var rdpErr *rdp.RDPError
+		if errors.As(err, &rdpErr) {
+			writeProblem(w, rdpErr.Status, rdpErr.Code, rdpErr.Message)
+			return
+		}
+		serverError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func newAgentToken() (string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(raw), nil
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
@@ -480,5 +690,30 @@ func isLoopbackHost(h string) bool {
 	}
 	ip := net.ParseIP(h)
 	return ip != nil && ip.IsLoopback()
+}
+
+// isLoopbackRequest treats only real loopback peers as local. X-Forwarded-For is
+// deliberately ignored: trusting it would let a remote caller claim 127.0.0.1.
+func isLoopbackRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	return isLoopbackHost(strings.Trim(host, "[]"))
+}
+
+// isSameOriginRequest rejects cross-site POSTs. RDP launch and signing have
+// side effects on the local desktop, so when a browser sends Origin it must
+// match this host. Non-browser clients and same-origin form posts may omit it.
+func isSameOriginRequest(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(parsed.Host, r.Host)
 }
 func fatal(msg string, err error) { fmt.Fprintln(os.Stderr, msg+":", err); os.Exit(1) }

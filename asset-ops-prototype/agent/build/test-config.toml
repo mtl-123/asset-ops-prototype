@@ -1,0 +1,31 @@
+server = "http://127.0.0.1:8765"
+token = "test"
+interval = 60
+stale_days = 90
+network_interfaces = ["eth1"]
+
+[metrics]
+cpu_detail = true
+memory = true
+swap = true
+disk = true
+inode = true
+disk_io = true
+tcp = true
+process = true
+
+[audit]
+enabled = true
+history_limit = 20
+failed_limit = 20
+lastlog = true
+
+[logs]
+enabled = true
+mode = "agent"
+paths = ["/var/log/auth.log", "/tmp/qiyun-no-such-log"]
+business_paths = []
+
+[dependencies]
+auto_install = false
+auditd = false
